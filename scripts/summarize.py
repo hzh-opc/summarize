@@ -4,20 +4,27 @@
 summarize.py — 本地抽取式摘要与关键词提取引擎（纯标准库，离线，跨平台）
 
 设计原则（对应技能定位）：
-  - 完整的本地处理能力（离线）：不依赖任何第三方包，Windows / macOS / Linux 均可运行。
+  - 完整的本地处理能力（离线）：默认零第三方依赖，Windows / macOS / Linux 均可运行。
+    若环境已安装 jieba，则自动启用其分词提升中文关键词质量；未安装则回退内置二元/三元组，不报错。
   - 云端取方法、本地处理信息：通过 `--brief` 模式仅把「关键词 + 候选句 + 结构」
     这一紧凑中间产物交给云端大模型，原始长文不出本机、省 TOKEN。
   - 可定制摘要长度：--length（句数）/ --ratio（比例）/ --chars（字数）。
+  - 超长文本：超过 --max-input-chars 时自动滑动窗口分块抽取后合并。
+  - 多文档：传入多个输入，跨文档统一提取关键词与候选句，产出联合摘要。
   - 质量评估：压缩比、关键词覆盖、句数缩减、可读性启发式，输出 0~100 评分。
+  - 语气：--tone 调节喂给云端模型的摘要语气（neutral/concise/professional/casual）。
 
 用法：
-  python3 summarize.py INPUT [--length N | --ratio R | --chars C]
-                           [--keywords K] [--lang auto|zh|en]
-                           [--format json|md|txt] [--eval] [--brief] [--out PATH]
+  python3 summarize.py INPUT [INPUT2 ...] [--length N | --ratio R | --chars C]
+                           [--keywords K] [--lang auto|zh|en] [--tone neutral|concise|professional|casual]
+                           [--max-input-chars N] [--format json|md|txt] [--eval] [--brief] [--out PATH]
 
-  INPUT 可为：文本文件路径；或 `-` 表示从 stdin 读取。
+  INPUT 可为：文本文件路径；或 `-` 表示从 stdin 读取（多文档时每个位置独立）。
   --brief   输出「喂给云端模型的紧凑中间产物」（关键词 + 候选句 + 结构骨架）。
   --eval    在输出中附带质量评估。
+
+本脚本**不依赖任何外部技能**（如 desensitization-sop）；脱敏协同由 SKILL.md 在智能体层
+面按「是否安装」条件执行，脚本本身零耦合、缺失不致错。
 """
 
 import sys
@@ -26,6 +33,19 @@ import re
 import json
 import argparse
 import math
+
+# ---------------------------------------------------------------------------
+# 可选依赖：jieba（中文分词，提升关键词质量）。缺失则优雅回退，绝不报错。
+# ---------------------------------------------------------------------------
+try:
+    import jieba
+    try:
+        jieba.setLogLevel(20)  # 静默
+    except Exception:
+        pass
+    _JIEBA = True
+except Exception:
+    _JIEBA = False
 
 # ---------------------------------------------------------------------------
 # 停用词（内置，覆盖中英常用功能词；可按需扩展）
@@ -57,6 +77,14 @@ SENT_SPLIT = re.compile(r"(?<=[。！？!?；;…])|(?<=[\n\r])")
 # 拉丁词
 LATIN_WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9'+\-./]*")
 
+# 语气 -> 喂给云端模型的措辞
+TONE_INSTR = {
+    "neutral": "生成一段连贯、客观、立场中性的抽象式摘要，指出核心结论与要点。",
+    "concise": "用尽可能简洁的语言生成摘要，只保留最关键结论，去除一切冗余。",
+    "professional": "用专业、正式、书面化的语气生成摘要，适合报告与存档场景。",
+    "casual": "用通俗、口语化、易懂的语气生成摘要，面向非专业读者。",
+}
+
 
 def is_cjk(ch):
     return bool(CJK.match(ch))
@@ -85,7 +113,6 @@ def split_sentences(text):
         s = s.strip()
         if not s:
             continue
-        # 去掉行内多余空白
         s = re.sub(r"\s+", " ", s)
         out.append(s)
     return out
@@ -105,9 +132,7 @@ def detect_lang(text, sentences):
 # 关键词提取
 # ---------------------------------------------------------------------------
 def cjk_bigrams(text):
-    """对 CJK 连续段生成二元组作为候选词，统计词频与文档频。"""
-    tf = {}
-    df = {}
+    tf, df = {}, {}
     for run in CJK_RUN.findall(text):
         if len(run) < 2:
             continue
@@ -122,9 +147,7 @@ def cjk_bigrams(text):
 
 
 def cjk_trigrams(text):
-    """三元组候选词（更可能是真实词，跨词边界噪声更低）。"""
-    tf = {}
-    df = {}
+    tf, df = {}, {}
     for run in CJK_RUN.findall(text):
         if len(run) < 3:
             continue
@@ -141,34 +164,50 @@ def cjk_trigrams(text):
 def extract_keywords(text, sentences, lang, top_k=8):
     """返回 [(keyword, weight), ...] 已排序。
 
-    中文采用「二元组 + 三元组」候选，并强制关键词至少在 2 个句中复现
-    （df>=2，短文本放宽到 1），以滤除跨词边界的一次性噪声（如「工智」「键词」）。
+    中文：
+      - 若 jieba 可用：用 jieba 分词得到真实词，词频*文档频打分（质量最佳）。
+      - 否则回退「二元组 + 三元组」候选，并要求跨句复现(df>=2)抑制跨词边界噪声。
     """
     kw = {}
 
     if lang == "zh":
-        bi_tf, bi_df = cjk_bigrams(text)
-        tri_tf, tri_df = cjk_trigrams(text)
-        n_sent = max(1, len(sentences))
-        min_df = 2 if n_sent >= 3 else 1
-        for g, freq in bi_tf.items():
-            if g in ZH_STOP or bi_df[g] < min_df:
-                continue
-            # 评分：词频 * log(1+文档频)，偏向跨句出现的词
-            kw[g] = kw.get(g, 0) + freq * (1.0 + math.log(1 + bi_df[g]))
-        for g, freq in tri_tf.items():
-            if g in ZH_STOP or tri_df[g] < min_df:
-                continue
-            # 三元组更可能是真实词，加权
-            kw[g] = kw.get(g, 0) + freq * (1.0 + math.log(1 + tri_df[g])) * 1.3
+        if _JIEBA:
+            sent_tokens = []
+            for s in sentences:
+                toks = [t for t in jieba.cut(s)
+                        if len(t) >= 2 and CJK_RUN.match(t) and t not in ZH_STOP]
+                sent_tokens.append(set(toks))
+            tf, df = {}, {}
+            for toks in sent_tokens:
+                for t in toks:
+                    tf[t] = tf.get(t, 0) + 1
+            for toks in sent_tokens:
+                for t in toks:
+                    df[t] = df.get(t, 0) + 1
+            min_df = 2 if len(sentences) >= 3 else 1
+            for t, freq in tf.items():
+                if df[t] < min_df:
+                    continue
+                kw[t] = kw.get(t, 0) + freq * (1.0 + math.log(1 + df[t])) * 1.2
+        else:
+            bi_tf, bi_df = cjk_bigrams(text)
+            tri_tf, tri_df = cjk_trigrams(text)
+            n_sent = max(1, len(sentences))
+            min_df = 2 if n_sent >= 3 else 1
+            for g, freq in bi_tf.items():
+                if g in ZH_STOP or bi_df[g] < min_df:
+                    continue
+                kw[g] = kw.get(g, 0) + freq * (1.0 + math.log(1 + bi_df[g]))
+            for g, freq in tri_tf.items():
+                if g in ZH_STOP or tri_df[g] < min_df:
+                    continue
+                kw[g] = kw.get(g, 0) + freq * (1.0 + math.log(1 + tri_df[g])) * 1.3
     else:
-        # 拉丁：分词 + 词频
         tokens = [w.lower() for w in LATIN_WORD.findall(text)]
         for w in tokens:
             if w in EN_STOP or len(w) <= 1:
                 continue
             kw[w] = kw.get(w, 0) + 1.0
-        # 二元组短语（提升质量，如 "machine learning"）
         for i in range(len(tokens) - 1):
             a, b = tokens[i].lower(), tokens[i + 1].lower()
             if a in EN_STOP or b in EN_STOP:
@@ -190,14 +229,12 @@ def score_sentences(sentences, keywords, lang):
     scored = []
     for i, s in enumerate(sentences):
         low = s.lower()
-        # 1) 关键词覆盖
         kcov = 0.0
         for k, w in kw_map.items():
             if k in low:
                 kcov += w
         kcov_norm = kcov / total_kw_weight
 
-        # 2) 位置权重（首尾句略加权，模拟 lead/lag bias）
         pos = 0.0
         if i == 0:
             pos = 1.0
@@ -208,7 +245,6 @@ def score_sentences(sentences, keywords, lang):
         else:
             pos = 0.3
 
-        # 3) 长度偏好（中等长度最佳）
         L = len(s)
         if lang == "zh":
             if 15 <= L <= 80:
@@ -226,7 +262,6 @@ def score_sentences(sentences, keywords, lang):
             else:
                 len_score = max(0.4, 1.0 - (words - 35) / 80.0)
 
-        # 4) 句首信号（含「总之/因此/结论/本文/研究」等提示词）
         signal = 0.0
         signals = ["总之", "因此", "结论", "综上", "本文", "研究", "发现", "建议",
                    "in conclusion", "therefore", "however", "we propose", "our findings",
@@ -235,7 +270,7 @@ def score_sentences(sentences, keywords, lang):
             signal = 0.4
 
         score = 0.55 * kcov_norm + 0.22 * pos + 0.15 * len_score + 0.08 * signal
-        scored.append((i, s, score))
+        scored.append((i, s, score))  # (全局句索引, 句文本, 分值)
     return scored
 
 
@@ -243,13 +278,11 @@ def score_sentences(sentences, keywords, lang):
 # 摘要长度解析
 # ---------------------------------------------------------------------------
 def select_sentences(scored, n_total, length=None, ratio=None, chars=None):
+    """scored: [(全局句索引, 句文本, 分值), ...]。返回按全局顺序排序的 (idx, s, sc)。"""
     if chars:
-        chosen = []
-        total = 0
+        chosen, total = [], 0
         for i, s, sc in sorted(scored, key=lambda x: x[2], reverse=True):
-            if total + len(s) > chars:
-                if not chosen:
-                    chosen.append((i, s, sc))
+            if total + len(s) > chars and chosen:
                 break
             chosen.append((i, s, sc))
             total += len(s)
@@ -259,11 +292,62 @@ def select_sentences(scored, n_total, length=None, ratio=None, chars=None):
     elif length is not None:
         k = length
     else:
-        # 默认：约 30% 或最多 5 句
         k = max(1, min(5, int(round(n_total * 0.3))))
     k = min(k, n_total)
     top = sorted(scored, key=lambda x: x[2], reverse=True)[:k]
     return sorted(top, key=lambda x: x[0])
+
+
+# ---------------------------------------------------------------------------
+# 超长文本：滑动窗口分块抽取后合并
+# ---------------------------------------------------------------------------
+def chunk_sentences(sentences, max_chars, overlap=1):
+    chunks, cur, cur_chars = [], [], 0
+    for i, s in enumerate(sentences):
+        if cur and cur_chars + len(s) > max_chars:
+            chunks.append(cur)
+            cur = cur[-overlap:] if overlap else []
+            cur_chars = sum(len(x[1]) for x in cur)
+        cur.append((i, s))
+        cur_chars += len(s)
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def sliding_window(sentences, keywords, lang, max_input_chars,
+                   length=None, ratio=None, chars=None):
+    chunks = chunk_sentences(sentences, max_input_chars)
+    # 各块按最终比例抽取候选句（全局索引），重叠句去重
+    final_ratio = ratio if ratio is not None else 0.3
+    candidates = []
+    for ch in chunks:
+        idxs = [i for i, _ in ch]
+        ch_sent = [s for _, s in ch]
+        scored = score_sentences(ch_sent, keywords, lang)
+        keep = max(1, int(round(len(ch) * final_ratio)))
+        top = sorted(scored, key=lambda x: x[2], reverse=True)[:keep]
+        for local_i, s, sc in top:
+            candidates.append((idxs[local_i], s, sc))
+    seen = {}
+    for g, s, sc in candidates:
+        if g not in seen:
+            seen[g] = (g, s, sc)
+    candidates = list(seen.values())
+
+    # 用户显式 --length / --chars 时，在候选集上做二次裁剪
+    if length is not None:
+        chosen = sorted(candidates, key=lambda x: x[2], reverse=True)[:length]
+        return sorted(chosen, key=lambda x: x[0])
+    if chars is not None:
+        chosen, total = [], 0
+        for g, s, sc in sorted(candidates, key=lambda x: x[2], reverse=True):
+            if total + len(s) > chars and chosen:
+                break
+            chosen.append((g, s, sc))
+            total += len(s)
+        return sorted(chosen, key=lambda x: x[0])
+    return sorted(candidates, key=lambda x: x[0])
 
 
 # ---------------------------------------------------------------------------
@@ -275,12 +359,10 @@ def quality_eval(original, summary, keywords, chosen_idx, n_total):
     compression = 1.0 - (sum_chars / orig_chars) if orig_chars else 0.0
     sent_red = 1.0 - (len(chosen_idx) / n_total) if n_total else 0.0
 
-    # 关键词覆盖：摘要中出现的关键词占比
     low_sum = summary.lower()
     covered = sum(1 for k, _ in keywords if k.lower() in low_sum)
     kw_cov = covered / len(keywords) if keywords else 0.0
 
-    # 可读性启发式：平均句长（中文字数）落在 25~70 视为佳
     sents = [s for _, s, _ in chosen_idx]
     avg_len = (sum(len(s) for s in sents) / len(sents)) if sents else 0
     if 25 <= avg_len <= 70:
@@ -304,51 +386,97 @@ def quality_eval(original, summary, keywords, chosen_idx, n_total):
 
 
 # ---------------------------------------------------------------------------
-# 主流程
+# 主流程（单文档 / 多文档统一）
 # ---------------------------------------------------------------------------
-def summarize(text, length=None, ratio=None, chars=None, keywords_k=8,
-              lang="auto", do_eval=True, brief=False):
-    sentences = split_sentences(text)
-    if not sentences:
+def summarize(texts, length=None, ratio=None, chars=None, keywords_k=8,
+              lang="auto", do_eval=True, brief=False,
+              max_input_chars=200000, tone="neutral", multi=False):
+    if isinstance(texts, str):
+        texts = [texts]
+    texts = [t for t in texts if t and t.strip()]
+    if not texts:
         return {"summary": "", "keywords": [], "eval": None, "brief": None,
-                "lang": lang, "sentence_count": 0}
+                "lang": lang, "sentence_count": 0, "doc_count": 0}
+
+    # 构建全局句序列（含文档归属）与合并全文（供关键词提取）
+    all_sent = []          # [(doc_id, 句文本)]
+    doc_of = {}            # 全局句索引 -> doc_id
+    full_parts = []
+    gidx = 0
+    for d, t in enumerate(texts):
+        for s in split_sentences(t):
+            all_sent.append((d, s))
+            doc_of[gidx] = d
+            gidx += 1
+        full_parts.append(t)
+    full_text = "\n".join(full_parts)
+    sentences_only = [s for _, s in all_sent]
+
+    if not sentences_only:
+        return {"summary": "", "keywords": [], "eval": None, "brief": None,
+                "lang": lang, "sentence_count": 0, "doc_count": len(texts)}
+
     if lang == "auto":
-        lang = detect_lang(text, sentences)
-    keywords = extract_keywords(text, sentences, lang, keywords_k)
-    scored = score_sentences(sentences, keywords, lang)
-    chosen = select_sentences(scored, len(sentences), length, ratio, chars)
-    chosen_idx = [i for i, s, _ in chosen]
-    summary = "".join(s + ("。" if lang == "zh" and not s.endswith(("。", "！", "？", "!", "?", "；", ";")) else "") for i, s, _ in chosen)
-    # 英文用空格连接
-    if lang == "en":
-        summary = " ".join(s for _, s in chosen)
+        lang = detect_lang(full_text, sentences_only)
+
+    keywords = extract_keywords(full_text, sentences_only, lang, keywords_k)
+
+    # 超长文本滑动窗口（按合并全文长度判断）
+    if len(full_text) > max_input_chars and len(sentences_only) > 1:
+        chosen = sliding_window(sentences_only, keywords, lang, max_input_chars,
+                                length, ratio, chars)
+    else:
+        scored = score_sentences(sentences_only, keywords, lang)
+        chosen = select_sentences(scored, len(sentences_only), length, ratio, chars)
+
+    # 组装摘要（多文档时标注来源）
+    parts = []
+    for g, s, _ in chosen:
+        if lang == "zh":
+            seg = s
+            if not seg.endswith(("。", "！", "？", "!", "?", "；", ";")):
+                seg += "。"
+            if multi:
+                seg = "[文档%d] %s" % (doc_of[g] + 1, seg)
+            parts.append(seg)
+        else:
+            parts.append(s)
+    if lang == "zh":
+        summary = "".join(parts)
+    else:
+        summary = " ".join(parts)
+
+    chosen_out = [{"index": g, "doc": doc_of[g] + 1, "text": s} for g, s, _ in chosen]
 
     result = {
         "lang": lang,
-        "sentence_count": len(sentences),
+        "doc_count": len(texts),
+        "sentence_count": len(sentences_only),
         "summary": summary,
         "keywords": [k for k, _ in keywords],
         "keyword_weights": {k: round(w, 2) for k, w in keywords},
-        "chosen_sentences": [{"index": i, "text": s} for i, s, _ in chosen],
+        "chosen_sentences": chosen_out,
+        "jieba_used": _JIEBA,
     }
 
     if do_eval:
-        result["eval"] = quality_eval(text, summary, keywords, chosen, len(sentences))
+        result["eval"] = quality_eval(full_text, summary, keywords, chosen, len(sentences_only))
 
     if brief:
-        # 喂给云端模型的紧凑中间产物：关键词 + 候选句（含分值）+ 结构骨架
+        cand = sorted(score_sentences(sentences_only, keywords, lang),
+                      key=lambda x: x[2], reverse=True)[:min(10, len(sentences_only))]
         result["brief"] = {
             "keywords": [k for k, _ in keywords],
             "candidate_sentences": [
-                {"index": i, "score": round(sc, 3), "text": s}
-                for i, s, sc in sorted(scored, key=lambda x: x[2], reverse=True)[:min(10, len(scored))]
+                {"index": g, "doc": doc_of.get(g, 1), "score": round(sc, 3), "text": s}
+                for g, s, sc in cand
             ],
-            "total_sentences": len(sentences),
-            "char_count": len(text),
+            "total_sentences": len(sentences_only),
+            "char_count": len(full_text),
             "instruction": (
-                "基于上方关键词与候选句（已脱敏/仅本地信息），"
-                "生成一段连贯的抽象式摘要，指出核心结论与要点；"
+                "基于上方关键词与候选句（已脱敏/仅本地信息），%s"
                 "不要复述原始长文，不要引入候选句之外的未核实信息。"
+                % TONE_INSTR.get(tone, TONE_INSTR["neutral"])
             ),
         }
     return result
@@ -359,46 +487,48 @@ def summarize(text, length=None, ratio=None, chars=None, keywords_k=8,
 # ---------------------------------------------------------------------------
 def main():
     ap = argparse.ArgumentParser(description="本地抽取式摘要与关键词提取（离线/零依赖）")
-    ap.add_argument("input", help="文本文件或 - (stdin)")
+    ap.add_argument("input", nargs="+", help="文本文件（可多个）或 - (stdin)")
     ap.add_argument("--length", type=int, default=None, help="摘要句数")
     ap.add_argument("--ratio", type=float, default=None, help="摘要占原文比例 0~1")
     ap.add_argument("--chars", type=int, default=None, help="摘要字数上限")
     ap.add_argument("--keywords", type=int, default=8, help="关键词数量")
     ap.add_argument("--lang", default="auto", choices=["auto", "zh", "en"])
+    ap.add_argument("--tone", default="neutral",
+                    choices=["neutral", "concise", "professional", "casual"],
+                    help="喂给云端模型的摘要语气")
+    ap.add_argument("--max-input-chars", type=int, default=200000,
+                    help="超长文本滑动窗口阈值（字符数），默认 200000")
     ap.add_argument("--format", default="json", choices=["json", "md", "txt"])
     ap.add_argument("--eval", action="store_true", help="附带质量评估")
     ap.add_argument("--brief", action="store_true", help="输出喂给云端模型的紧凑中间产物")
     ap.add_argument("--out", default=None, help="输出文件路径")
     args = ap.parse_args()
 
-    text = read_text(args.input)
-    if not text.strip():
+    texts = [read_text(p) for p in args.input]
+    if not any(t.strip() for t in texts):
         sys.stderr.write("错误：输入为空。\n")
         sys.exit(2)
 
-    res = summarize(text, length=args.length, ratio=args.ratio, chars=args.chars,
-                    keywords_k=args.keywords, lang=args.lang,
-                    do_eval=args.eval or True, brief=args.brief)
+    multi = len(args.input) > 1
+    res = summarize(texts, length=args.length, ratio=args.ratio, chars=args.chars,
+                    keywords_k=args.keywords, lang=args.lang, tone=args.tone,
+                    max_input_chars=args.max_input_chars,
+                    do_eval=args.eval or True, brief=args.brief, multi=multi)
 
     if args.format == "json":
         out = json.dumps(res, ensure_ascii=False, indent=2)
     elif args.format == "md":
-        lines = []
-        lines.append("## 摘要")
-        lines.append(res["summary"])
-        lines.append("")
-        lines.append("## 关键词")
-        lines.append("、".join(res["keywords"]))
+        lines = ["## 摘要", res["summary"], "",
+                 "## 关键词", "、".join(res["keywords"])]
         if res.get("eval"):
             e = res["eval"]
-            lines.append("")
-            lines.append("## 质量评估")
-            lines.append(f"- 综合评分：{e['score']}/100")
-            lines.append(f"- 压缩比：{e['compression_ratio']}")
-            lines.append(f"- 句数缩减：{e['sentence_reduction']}")
-            lines.append(f"- 关键词覆盖：{e['keyword_coverage']}（{e['keywords_covered']}/{e['keywords_total']}）")
+            lines += ["", "## 质量评估",
+                      f"- 综合评分：{e['score']}/100",
+                      f"- 压缩比：{e['compression_ratio']}",
+                      f"- 句数缩减：{e['sentence_reduction']}",
+                      f"- 关键词覆盖：{e['keyword_coverage']}（{e['keywords_covered']}/{e['keywords_total']}）"]
         out = "\n".join(lines)
-    else:  # txt
+    else:
         out = res["summary"] + "\n\n关键词：" + "、".join(res["keywords"])
 
     if args.out:

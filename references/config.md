@@ -11,6 +11,8 @@
 | `language` | `auto` \| `zh` \| `en` | `auto` | 文本语种；auto 按 CJK/拉丁字符占比自动判定 |
 | `summary_length` | 对象 | 见下 | 摘要长度控制（三选一） |
 | `keywords_count` | 整数 | `8` | 提取关键词数量 |
+| `tone` | `neutral` \| `concise` \| `professional` \| `casual` | `neutral` | 喂给云端模型的摘要语气（仅影响 `brief.instruction`） |
+| `max_input_chars` | 整数 | `200000` | 超长文本滑动窗口阈值（字符数）；超过则分块抽取后合并 |
 | `quality_eval` | 布尔 | `true` | 是否输出质量评估 |
 | `keep_local_copy` | 布尔 | `true` | 是否保留本地抽取副本（用于与云端结果对比） |
 | `compare_cloud` | 布尔 | `false` | 云端处理后是否自动触发 compare.py 记录差异与改进建议 |
@@ -34,6 +36,12 @@ summary_length:
 - **local**：脚本 `scripts/summarize.py` 纯本地抽取式摘要，零依赖、离线、跨平台。原始文本不出本机。
 - **cloud**：智能体先本地运行 `summarize.py --brief` 得到「关键词+候选句+结构骨架」紧凑中间产物，仅将该中间产物提交云端大模型，由其产出连贯的抽象式摘要。达到「云端取方法、本地处理信息」——省 TOKEN、护隐私。原始长文不上云。
 - **hybrid**：在 local 基础上，把 brief 交给云端做一次润色/抽象化，再保留本地副本用于对比。
+
+## 其他本地能力（离线、零依赖默认）
+
+- **滑动窗口（超长文本）**：输入超过 `max_input_chars` 时，按句切分为重叠分块，逐块抽取候选句后合并去重，再按全局顺序输出。无需任何外部依赖。
+- **多文档联合摘要**：在 CLI 传入多个输入文件（`summarize.py a.txt b.txt ...`），跨文档统一提取关键词与候选句；输出摘要中每条以 `[文档N]` 标注来源，便于溯源。
+- **可选 jieba 分词**：若运行环境已安装 `jieba`，中文关键词自动改用 jieba 分词（质量更优）；未安装则回退内置「二元组+三元组」分词，**功能不受影响、不报错**。可在配置中忽略此差异。
 
 ## 与信息脱敏技能协同（desensitization=auto 时）
 

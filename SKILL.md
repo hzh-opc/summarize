@@ -41,15 +41,18 @@ agent_created: true
 配置项含义见 `references/config.md`（按需 Read）。
 
 ### 1. 本地优先：抽取式摘要 + 关键词（离线、零依赖）
-运行本技能脚本（纯标准库，Windows/macOS/Linux 通用）：
+运行本技能脚本（纯标准库，Windows/macOS/Linux 通用；**未安装 jieba 时自动回退内置分词，不报错**）：
 ```bash
 PY=<受管 python3 绝对路径，或用系统 python3>
-$PY <技能目录>/scripts/summarize.py <输入文件或 -> \
+$PY <技能目录>/scripts/summarize.py <输入1> [<输入2> ...] \
     [--length N | --ratio R | --chars C] [--keywords K] \
-    [--lang auto|zh|en] [--format json|md|txt] [--eval] [--brief] [--out PATH]
+    [--lang auto|zh|en] [--tone neutral|concise|professional|casual] \
+    [--max-input-chars N] [--format json|md|txt] [--eval] [--brief] [--out PATH]
 ```
-- `<输入>`：文本文件路径，或 `-` 表示读 stdin。
+- `<输入>`：一个或多个文本文件路径；或 `-` 表示读 stdin（多文档时每个位置独立）。多文档将跨文档统一提取关键词与候选句，产出联合摘要并标注 `[文档N]` 来源。
 - 长度三选一：`--length`(句数) / `--ratio`(比例) / `--chars`(字数)。
+- `--tone`：调节喂给云端模型的摘要语气（neutral/concise/professional/casual），影响 `brief.instruction`。
+- `--max-input-chars N`：超长文本阈值（默认 200000）。输入超过该长度时**自动滑动窗口分块抽取后合并**，全程离线。
 - `--eval`：输出质量评估（压缩比、关键词覆盖、综合评分 0~100，方法见 `references/quality-eval.md`）。
 - `--brief`：**关键**。输出「关键词 + 候选句(含分值) + 结构骨架」的紧凑中间产物，仅此中间产物送云端——实现「云端取方法、本地处理信息」。
 
@@ -73,6 +76,16 @@ $PY <技能目录>/scripts/compare.py --local <本地摘要> --cloud <云端摘�
 - 依据建议迭代 `scripts/summarize.py` 的打分权重/停用词/候选词规则，使本地能力逐步逼近云端。
 
 ## 与「信息脱敏」技能协同（desensitization=auto 时必做）
+
+> **零耦合保证**：本技能的脚本（`scripts/summarize.py`、`scripts/compare.py`）**不导入、不调用** `desensitization-sop` 或任何外部技能。脱敏协同完全在「智能体层」按条件执行——技能脚本本身在脱敏技能缺失时**天然不会出错**。
+
+### 0.5 脱敏技能可用性检测（避免依赖缺失致错）
+在执行任何上云操作前，先检测 `desensitization-sop` 是否安装：
+```bash
+test -d "$HOME/.workbuddy/skills/desensitization-sop" && echo installed || echo absent
+```
+- **absent（未安装）**：跳过所有脱敏步骤，直接走本地处理（`mode=local` 默认安全，原始文本不出本机）。若用户要求 `cloud`/`hybrid`，仅上云 `summarize.py --brief` 产出的紧凑中间产物，并明确提示用户：未做脱敏、存在隐私风险，需用户自行确认。
+- **installed（已安装）**：按下方闭环执行。
 
 若环境已安装 `desensitization-sop`，按其上云前/后闭环执行，确保「脱敏、处理、回填、复核」不出错：
 

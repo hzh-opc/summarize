@@ -38,3 +38,8 @@ readability = 1.0  (25≤avg_len≤70)
 2. 启用 `compare_cloud` 或 `mode=cloud/hybrid` 时，把云端抽象摘要与本地副本交 `compare.py` 比对。
 3. 差异与建议落盘至 `feedback_dir`，周期性可打包反馈给开发者（`feedback_email`）。
 4. 依据建议迭代 `scripts/summarize.py` 的打分权重、停用词、候选词生成规则，使本地能力逐步逼近云端。
+
+## 五、多文档与超长文本
+
+- **多文档联合摘要**：关键词跨文档统一提取，`keyword_coverage` 反映联合摘要对全部文档要点的覆盖；输出摘要以 `[文档N]` 标注来源，便于溯源核对。
+- **滑动窗口（超长文本）**：输入超过 `max_input_chars` 时分块抽取再合并。由于合并后已二次压缩，`sentence_reduction` 与 `compression_ratio` 会显著偏高，属预期；重点看 `keyword_coverage` 是否覆盖跨块要点。
