@@ -17,3 +17,9 @@ venv/
 #   ~/WorkBuddy/Skill-Dev/summarize
 # 与本仓库（本地仓库）彼此隔离，绝不进入本仓库，避免被误提交到 GitHub 远程。
 # 如误将工作空间文件复制到本目录，请在 add 前手动剔除。
+
+# 安全扫描产物（不纳入版本控制）
+.codebuddy/
+
+# 协同检测缓存快照（运行时生成，非源码）
+*.detected.json

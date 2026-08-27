@@ -20,7 +20,8 @@ summarize/
 │   └── quality-eval.md         # 质量评估方法
 └── assets/
     ├── summarize.config.yaml   # 默认配置模板
-    └── capabilities.json       # 协同能力清单（可扩展，不限定具体技能名）
+    ├── capabilities.json       # 协同能力清单（可扩展，不限定具体技能名）
+    └── capabilities.detected.json  # 检测缓存快照（--save-cache 生成，可纳入 .gitignore）
 ```
 
 ## 快速使用
@@ -47,7 +48,10 @@ python3 scripts/compare.py --local 本地摘要.txt --cloud 云端摘要.txt --o
 
 ## 协同技能检测、对接与容错（健壮性核心）
 
-本技能不假定任何外部技能已安装。`scripts/skill_bridge.py` 扫描用户级/项目级技能目录，按 `assets/capabilities.json` 的关键词泛匹配各技能 SKILL.md 描述，判定 `desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` 等能力是否可用——**不限定具体技能名**，故用户安装的任意脱敏/OCR/转录技能都能被识别对接：
+本技能不假定任何外部技能已安装。`scripts/skill_bridge.py` 扫描用户级/项目级技能目录，按 `assets/capabilities.json` 的关键词泛匹配各技能 SKILL.md 描述，判定 8 类能力是否可用——**不限定具体技能名**，故用户安装的任意脱敏/OCR/转录/知识库/翻译技能都能被识别对接：
+
+- 取文类：`desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch`
+- 输出后协同：`knowledge_base`（要点沉淀）/ `translation`（多语摘要）
 
 ```bash
 # 全量检测（排除调用方自身，避免描述中的输入形态被误判为自身能力）
@@ -55,10 +59,14 @@ python3 scripts/skill_bridge.py --map assets/capabilities.json --exclude summari
 
 # 单能力查询（exit 0=可用 / 1=缺失）
 python3 scripts/skill_bridge.py --exclude summarize --cap ocr --quiet && echo 有OCR || echo 无OCR
+
+# 新装/卸载协同技能后刷新「能力→技能」映射快照（写入 capabilities.detected.json）
+python3 scripts/skill_bridge.py --map assets/capabilities.json --exclude summarize --save-cache --format txt
 ```
 
-- **对接**：命中后用 Skill 工具加载对应技能产出文本，作为 `summarize.py` 的输入（本技能脚本只消费纯文本）。
-- **容错降级**：每个能力有 `fallback` 策略——`local`（脱敏→仅本地处理）、`ask`（OCR/语音/视频/文档缺失→请用户提供文本）、`tool`（网页缺失→回退内置 WebFetch）。**外部技能缺失只阻断「取文」、不阻断「摘要」。**
-- **可扩展**：在 `capabilities.json` 追加任意能力键（如 `translation`）即自动生效，无需改脚本。
+- **对接**：取文类命中后用 Skill 工具加载对应技能产出文本，作为 `summarize.py` 的输入；输出后协同类（`knowledge_base`/`translation`）在摘要产出后调用，把摘要/要点写入知识库或做目标语翻译。本技能脚本只消费纯文本。
+- **容错降级**：每个能力有 `fallback` 策略——`local`（脱敏→仅本地处理；`knowledge_base` 缺失→沉淀到本地 `./要点沉淀/YYYYMMDD.md`）、`ask`（OCR/语音/视频/文档缺失→请用户提供文本）、`tool`（网页缺失→回退内置 WebFetch；`translation` 缺失→仅对 brief/短摘要送云端翻译，原始长文不上云）。**外部技能缺失只阻断「取文」、不阻断「摘要」。**
+- **新装技能即时生效**：`skill_bridge.py` 默认每次调用 live 重扫技能目录，用户新装的协同技能无需改配置即被识别。
+- **可扩展**：在 `capabilities.json` 追加任意能力键（如 `rag` / `search`）即自动生效，无需改脚本。
 
 供 Claude / Codex / OpenClaw 使用时，复制本目录即可；运行需 Python 3.8+。详见 `SKILL.md`。

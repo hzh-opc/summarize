@@ -71,6 +71,7 @@ $PY <技能目录>/scripts/summarize.py <输入1> [<输入2> ...] \
 ### 3. 呈现与质量评估
 - 向用户输出：摘要正文 + 关键词 +（可选）质量评估。
 - 质量评估指标与评分见 `references/quality-eval.md`。
+- 若用户要求「沉淀到知识库 / 出多语版本」，转入第 4.5 节的输出后协同分支（该分支默认不主动触发）。
 
 ### 4. 云端结果对比与改进闭环（可选，建议开启）
 若 `compare_cloud: true` 或曾走 cloud/hybrid，运行：
@@ -111,6 +112,8 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap ocr --quiet && 
 | `video_transcript` | 视频转文字/字幕 | 用 **Skill 工具**加载该视频技能产出文本 | `ask`：请用户提供文字稿/字幕 |
 | `document_text` | docx/pdf 落地文本 | 用 **Skill 工具**加载该文档技能（如 `tencent-local-office-edit`） | `ask`：请导出 .txt/.md |
 | `web_fetch` | 网页抓文本 | 用 **Skill 工具**加载该技能；未命中则回退内置 `WebFetch` 工具 | `tool`：回退 `WebFetch`（仍过脱敏协同） |
+| `knowledge_base` | 摘要/要点沉淀进知识库 | 用 **Skill 工具**加载该技能，把「摘要+要点+来源」入库（见第 4.5 节） | `local`：沉淀到本地 `./要点沉淀/YYYYMMDD.md` |
+| `translation` | 多语摘要 / 翻译 | 用 **Skill 工具**加载该技能，对摘要做目标语翻译（见第 4.5 节） | `tool`：仅对 brief/短摘要送云端翻译，原始长文不上云 |
 
 > 对接外部技能的标准动作：用 **Skill 工具**加载其 `SKILL.md` → 遵循其流程产出文本 → 把文本作为本技能 `summarize.py` 的输入。**本技能脚本只消费纯文本**，因此外部技能缺失只阻断「取文」、不阻断「摘要」。
 
@@ -142,12 +145,45 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 
 > 红线：脱敏副本可上云，原始文件与映射表留本地且分离；自动化识别非 100%，禁止「一键脱敏即上云」，必须人工复核。
 
+### 4.5 输出后协同：要点沉淀（knowledge_base）与多语摘要（translation）
+
+这两类能力发生在**摘要产出之后**（而非取文阶段），用于放大摘要价值。同样先经 `skill_bridge.py` 检测，命中即用 **Skill 工具**加载对应技能对接，缺失则按 `fallback` 降级。
+
+**A. 要点沉淀 knowledge_base**
+- **available**：用 **Skill 工具**加载该知识库/笔记技能，把 `summarize.py` 产出的「摘要正文 + 关键词 + 来源路径/链接」作为一条结构化要点写入（建议带上 `来源: <原始文件名或 URL>` 与 `生成于: <日期>`，便于回溯）。若该技能要求先建库/建空间，提示用户或按其特征词自动匹配。
+- **absent（fallback=local）**：本技能在本工作区创建 `./要点沉淀/YYYYMMDD.md`，写入同样的「摘要 + 要点 + 来源」纯 markdown。**这样即使用户未装任何知识库技能，要点也不会丢失，日后可一键导入 Obsidian / Notion / 语雀等任意知识库**。
+
+**B. 多语摘要 translation**
+- **available**：用 **Skill 工具**加载该翻译技能，对（本地或云端的）摘要做目标语言翻译；可询问用户目标语言。原始长文不上云，仅翻译短摘要。
+- **absent（fallback=tool）**：若用户确实需要多语摘要，仅把 `--brief` 紧凑中间产物或本地短摘要送云端翻译（**原始长文仍留本机**），并提示未做脱敏的隐私风险；若用户不需要翻译，则跳过。
+
+> 这两条分支与主流程解耦：用户不要求沉淀/翻译时，即使对应技能可用也**不主动触发**，避免副作用。
+
+### 4.6 安装新的协同技能后：及时刷新检测（更新设置）
+
+本技能对协同能力的检测**默认每次调用都 live 重扫** `~/.workbuddy/skills` 与 `./.workbuddy/skills`，因此用户**新安装的协同技能在下一轮对话/调用即自动生效**，无需手动改配置。为便于把「能力→技能」映射固化成可读的协同设置快照，并提供显式刷新入口，可用 `--save-cache`：
+
+```bash
+PY=<受管 python3>
+SKILL_DIR=<技能目录>
+# 安装/卸载任意协同技能后，刷新映射快照（写入 assets/capabilities.detected.json）
+$PY $SKILL_DIR/scripts/skill_bridge.py --map $SKILL_DIR/assets/capabilities.json \
+    --exclude summarize --save-cache --format txt
+# 下次需要加速时读缓存（缓存缺失自动回退 live）
+$PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format txt
+```
+
+- `--save-cache` 产出的 `capabilities.detected.json` 即本技能的**协同设置快照**：记录每个能力命中了哪个技能（含 score）、缺失时走哪种 `fallback`。它既能作为审计/排查依据，也是「用户装了新技能后更新设置」的显式动作。
+- 智能体在「处理流程 0.5」每次仍走 live 重扫；`--use-cache` 仅在明确要跳过重扫、且已 `save-cache` 过时作为加速手段。
+
 ### 5. 扩展：接入「用户其它已安装技能」
 
 `assets/capabilities.json` 是**开放清单**，本机制天然兼容用户未来安装的任何协同技能：
-- **新增能力**：在 JSON 的 `capabilities` 下追加任意键（如 `translation`、`knowledge_base`），给出 `purpose`、`keywords`（候选关键词）、`fallback` 与 `fallback_note`。`skill_bridge.py` 会自动识别匹配到的技能，无需改脚本。
-- **触发新能力**：`skill_bridge.py --cap <新能力>` 检测 → 命中则按对应分支用 **Skill 工具**加载该技能并遵循其流程；未命中则按该能力的 `fallback` 降级。
+- **已落地能力**：`desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` / `knowledge_base`(要点沉淀) / `translation`(多语摘要)。其中 `knowledge_base` 与 `translation` 为「输出后协同」，对接分支见第 4.5 节。
+- **新增能力**：在 JSON 的 `capabilities` 下追加任意键（如 `rag`、`search`、`mindmap`），给出 `purpose`、`keywords`（候选关键词）、`fallback` 与 `fallback_note`。`skill_bridge.py` 会自动识别匹配到的技能，无需改脚本。
+- **触发新能力**：`skill_bridge.py --cap <新能力>` 检测 → 命中则按对应分支用 **Skill 工具**加载该技能并遵循其流程；未命中则按该能力的 `fallback` 降级。若属输出后协同（如沉淀/多语），仿第 4.5 节在 SKILL.md 补一段对接分支即可。
 - **关键词调优**：若某技能未被识别（描述措辞不同），只需在其 `keywords` 中补充该技能描述里的特征词即可，零代码改动。
+- **刷新设置**：安装/卸载协同技能后运行 `skill_bridge.py --save-cache`（见第 4.6 节），把「能力→技能」映射固化为 `capabilities.detected.json` 快照；本技能默认每次 live 重扫，新技能即时生效。
 - 这样既"非限定本机已安装技能"，也为未来任意协同技能预留统一入口，持续提升健壮性。
 
 ## 跨智能体 / 跨平台说明
@@ -157,4 +193,4 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 
 ## 可扩展方向（按需补充）
 
-根据日常工作需求，参考市场同类技能，可补充：更长上下文的滑动窗口摘要、多文档联合摘要、按用户画像调节摘要语气、与笔记/知识库联动沉淀要点等。
+根据日常工作需求，参考市场同类技能，可继续补充：更长上下文的滑动窗口摘要（已支持）、多文档联合摘要（已支持）、按用户画像调节摘要语气、与 `rag`/`search` 类技能联动做「摘要即检索」等。

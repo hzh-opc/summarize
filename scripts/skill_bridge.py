@@ -16,8 +16,13 @@ name/description/tags，判定各能力是否可用，并返回最佳匹配技�
 用法：
   python3 skill_bridge.py [--map assets/capabilities.json] [--roots DIR1,DIR2]
                           [--cap 能力名] [--format json|txt] [--quiet]
+                          [--save-cache] [--use-cache] [--cache-path PATH]
 
   --cap 模式：仅检测单个能力，exit 0=可用 / 1=缺失（配合 --quiet 只返回码）。
+  --save-cache：把「能力→技能」映射持久化为快照（默认 capabilities.detected.json），
+                —— 安装/卸载协同技能后运行它以刷新本技能的协同设置。
+  --use-cache ：优先读缓存映射加速；缓存缺失自动回退 live 重扫。默认始终 live 重扫，
+                保证用户新装的协同技能在下一轮调用立即生效。
 """
 
 import argparse
@@ -65,6 +70,18 @@ DEFAULT_CAPS = {
             "fallback": "tool",
             "fallback_note": "缺失时回退到内置 WebFetch 工具直接抓取（抓取内容可能含敏感信息，仍需过脱敏协同）",
         },
+        "knowledge_base": {
+            "purpose": "摘要/要点沉淀进知识库、笔记或长期记忆",
+            "keywords": ["知识管理", "知识库联动", "笔记", "笔记管理", "沉淀", "obsidian", "notion", "语雀", "flomo", "第二大脑", "卡片笔记", "kbase", "knowledge_base", "knowledge base 联动"],
+            "fallback": "local",
+            "fallback_note": "缺失时把「摘要 + 要点 + 来源」沉淀到本地 ./要点沉淀/YYYYMMDD.md（纯 markdown，便于日后导入任意知识库）",
+        },
+        "translation": {
+            "purpose": "多语摘要 / 把摘要翻译为目标语言",
+            "keywords": ["翻译", "translate", "多语", "多语言", "译文", "translation", "i18n", "本地化", "译后", "中英互译"],
+            "fallback": "tool",
+            "fallback_note": "缺失时如需多语摘要，仅对 --brief 紧凑中间产物(或本地短摘要)送云端翻译，原始长文不上云；否则提示用户安装翻译技能",
+        },
     }
 }
 
@@ -92,6 +109,68 @@ def load_caps(map_path):
             except Exception:
                 pass
     return DEFAULT_CAPS["capabilities"]
+
+
+def default_cache_path(map_path):
+    """缓存文件默认位置：与 capabilities.json 同目录、同名 .detected.json。
+    未指定 --map 时落在脚本同目录的 assets/ 下。"""
+    if map_path:
+        mp = expand(map_path)
+        d = os.path.dirname(mp)
+        stem = os.path.splitext(os.path.basename(mp))[0]
+        return os.path.join(d, stem + ".detected.json")
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(here, "capabilities.detected.json")
+
+
+def write_cache(path, det, scanned_skills, roots):
+    """将检测结果持久化为「能力→技能」映射快照（即本技能的协同设置）。"""
+    try:
+        os.makedirs(os.path.dirname(expand(path)) or ".", exist_ok=True)
+        payload = {
+            "generated_at": int(os.environ.get("_NOW", "0")) or None,
+            "scanned_skills": scanned_skills,
+            "roots": [expand(r) for r in roots],
+            "mapping": {
+                cap: ({"skill": info["skill"], "name": info.get("name", ""),
+                       "path": info["path"], "score": info["score"]}
+                      if info.get("available") else {"available": False,
+                                                     "fallback": info.get("fallback", "ask")})
+                for cap, info in det.items()
+            },
+        }
+        with open(expand(path), "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def load_cache(path):
+    """读取缓存的检测映射；文件缺失或异常返回 None。"""
+    p = expand(path)
+    if not os.path.exists(p):
+        return None
+    try:
+        with open(p, encoding="utf-8") as f:
+            data = json.load(f)
+        mapping = data.get("mapping", {})
+        # 还原为与 detect() 兼容的 det 结构
+        det = {}
+        for cap, v in mapping.items():
+            if isinstance(v, dict) and v.get("available") is False:
+                det[cap] = {"available": False, "fallback": v.get("fallback", "ask")}
+            elif isinstance(v, dict) and "skill" in v:
+                det[cap] = {
+                    "available": True,
+                    "skill": v["skill"],
+                    "name": v.get("name", ""),
+                    "path": v.get("path", ""),
+                    "score": v.get("score", 0),
+                }
+        return det if det else None
+    except Exception:
+        return None
 
 
 def default_roots():
@@ -215,6 +294,11 @@ def main():
     ap.add_argument("--cap", help="仅检测单个能力，返回可用与否（exit 0=可用,1=缺失）")
     ap.add_argument("--format", default="json", choices=["json", "txt"])
     ap.add_argument("--quiet", action="store_true", help="--cap 模式仅返回 exit code")
+    ap.add_argument("--save-cache", action="store_true",
+                    help="将检测结果持久化到缓存文件（刷新「能力→技能」映射快照）；默认位置与 --map 同名 .detected.json")
+    ap.add_argument("--use-cache", action="store_true",
+                    help="优先读取缓存映射（加速），缓存缺失则回退 live 重扫；默认始终 live 重扫以保证新装技能立即生效")
+    ap.add_argument("--cache-path", help="指定缓存文件路径（覆盖默认位置）")
     args = ap.parse_args()
 
     caps = load_caps(args.map)
@@ -232,8 +316,27 @@ def main():
             seen.add(er)
             uniq.append(er)
 
-    skills = scan_skills(uniq, exclude=args.exclude)
-    det = detect(caps, skills)
+    cache_path = expand(args.cache_path) if args.cache_path else default_cache_path(args.map)
+
+    # 读取策略：--use-cache 且未要求保存 → 读缓存；否则 live 重扫（保证新装技能立即生效）
+    if args.use_cache and not args.save_cache:
+        det = load_cache(cache_path)
+        if det is None:
+            det = None  # 缓存缺失，下方回退 live
+    else:
+        det = None
+
+    if det is None:
+        skills = scan_skills(uniq, exclude=args.exclude)
+        det = detect(caps, skills)
+    else:
+        skills = []  # 缓存命中，无需再扫
+
+    # 保存映射快照（刷新设置）
+    if args.save_cache:
+        ok = write_cache(cache_path, det, len(skills), uniq)
+        if not args.quiet:
+            sys.stderr.write("[skill_bridge] 已刷新检测缓存: {}\n".format(cache_path if ok else "(写入失败)"))
 
     # 单能力查询模式
     if args.cap:

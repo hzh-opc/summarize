@@ -35,6 +35,18 @@
       "keywords": ["网页抓取", "web fetch", "fetch url", "url抓取", "爬虫", "crawler", "联网抓取", "联网搜索"],
       "fallback": "tool",
       "fallback_note": "缺失时回退到内置 WebFetch 工具直接抓取（抓取内容可能含敏感信息，仍需过脱敏协同）"
+    },
+    "knowledge_base": {
+      "purpose": "摘要/要点沉淀进知识库、笔记或长期记忆",
+      "keywords": ["知识管理", "知识库联动", "笔记", "笔记管理", "沉淀", "obsidian", "notion", "语雀", "flomo", "第二大脑", "卡片笔记", "kbase", "knowledge_base", "knowledge base 联动"],
+      "fallback": "local",
+      "fallback_note": "缺失时把「摘要 + 要点 + 来源」沉淀到本地 ./要点沉淀/YYYYMMDD.md（纯 markdown，便于日后导入任意知识库）"
+    },
+    "translation": {
+      "purpose": "多语摘要 / 把摘要翻译为目标语言",
+      "keywords": ["翻译", "translate", "多语", "多语言", "译文", "translation", "i18n", "本地化", "译后", "中英互译"],
+      "fallback": "tool",
+      "fallback_note": "缺失时如需多语摘要，仅对 --brief 紧凑中间产物(或本地短摘要)送云端翻译，原始长文不上云；否则提示用户安装翻译技能"
     }
   }
 }
