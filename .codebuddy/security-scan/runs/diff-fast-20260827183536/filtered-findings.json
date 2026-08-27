@@ -1,0 +1,26 @@
+{
+  "mergedAt": "2026-08-27T10:39:58.169853+00:00",
+  "totalFindings": 0,
+  "byRiskType": {},
+  "bySeverity": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0
+  },
+  "deduplicatedCount": 0,
+  "discardedCount": 0,
+  "loadedAgents": [
+    "light-inline"
+  ],
+  "staleAgents": [],
+  "session": null,
+  "findings": [],
+  "_preCheckMetrics": {
+    "input": 0,
+    "grade_static": 0,
+    "grade_degraded": 0,
+    "grade_verifiable": 0,
+    "removed": 0
+  }
+}

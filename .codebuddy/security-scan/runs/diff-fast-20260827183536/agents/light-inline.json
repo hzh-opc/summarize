@@ -1,0 +1,30 @@
+{
+  "sourceAgent": "light-inline",
+  "findings": [],
+  "verdicts": [
+    {
+      "file": "scripts/summarize.py",
+      "line": 356,
+      "sinkType": "代码执行",
+      "isReachableFromSource": "no",
+      "isUndefended": "n/a",
+      "isAttackerReachable": "no",
+      "isBranchStsMissing": "n/a",
+      "isAuthElementIncomplete": "n/a",
+      "action": "dismiss",
+      "reasonBrief": "标识符quality_eval含eval子串误匹配，无eval()/exec()原语"
+    },
+    {
+      "file": "scripts/summarize.py",
+      "line": 463,
+      "sinkType": "代码执行",
+      "isReachableFromSource": "no",
+      "isUndefended": "n/a",
+      "isAttackerReachable": "no",
+      "isBranchStsMissing": "n/a",
+      "isAuthElementIncomplete": "n/a",
+      "action": "dismiss",
+      "reasonBrief": "result['eval']=quality_eval(...)为纯函数调用，无代码执行原语"
+    }
+  ]
+}

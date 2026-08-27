@@ -1,0 +1,40 @@
+{
+  "capabilities": {
+    "desensitization": {
+      "purpose": "上云前对敏感信息脱敏（脱敏/处理/回填/复核闭环）",
+      "keywords": ["脱敏", "desensitiz", "隐私", "敏感信息", "sensitive", "去标识", "脱敏网关"],
+      "fallback": "local",
+      "fallback_note": "缺失时仅本地处理，原始文本不出本机；若用户强制上云仅送 brief 紧凑中间产物并提示隐私风险"
+    },
+    "ocr": {
+      "purpose": "图片 / 扫描件 / 截图转文字",
+      "keywords": ["ocr", "光学字符", "图片转文字", "图像文字", "识别文字", "image to text", "截图转文字", "扫描件"],
+      "fallback": "ask",
+      "fallback_note": "缺失时请用户直接提供文本，或安装 OCR 技能"
+    },
+    "speech_transcription": {
+      "purpose": "音频 / 语音转文字（ASR）",
+      "keywords": ["语音", "转录", "转写", "speech", "transcription", "asr", "音频转文字", "听写", "字幕生成"],
+      "fallback": "ask",
+      "fallback_note": "缺失时请用户提供文字稿，或安装语音转录技能"
+    },
+    "video_transcript": {
+      "purpose": "视频转文字 / 字幕 / 文案提取",
+      "keywords": ["视频", "文案提取", "字幕", "视频转文字", "video", "transcript", "口播", "短视频文案", "视频文稿"],
+      "fallback": "ask",
+      "fallback_note": "缺失时请用户提供文字稿或字幕，或安装视频文案提取技能"
+    },
+    "document_text": {
+      "purpose": "docx / pdf / office / ppt 文档落地为文本",
+      "keywords": ["docx", "word", "文档", "office", "pdf", "排版", "幻灯片", "ppt", "wps"],
+      "fallback": "ask",
+      "fallback_note": "缺失时请用户导出为 .txt/.md 或安装文档处理技能"
+    },
+    "web_fetch": {
+      "purpose": "网页抓取为文本",
+      "keywords": ["网页抓取", "web fetch", "fetch url", "url抓取", "爬虫", "crawler", "联网抓取", "联网搜索"],
+      "fallback": "tool",
+      "fallback_note": "缺失时回退到内置 WebFetch 工具直接抓取（抓取内容可能含敏感信息，仍需过脱敏协同）"
+    }
+  }
+}

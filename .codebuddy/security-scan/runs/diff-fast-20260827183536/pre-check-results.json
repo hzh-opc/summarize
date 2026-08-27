@@ -1,0 +1,13 @@
+{
+  "metrics": {
+    "input": 0,
+    "grade_static": 0,
+    "grade_degraded": 0,
+    "grade_verifiable": 0,
+    "removed": 0
+  },
+  "grade_static": [],
+  "grade_degraded": [],
+  "grade_verifiable": [],
+  "removed": []
+}

@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "early_exit_reason": "no_findings",
+    "skip_detail": "阶段 2 扫描后无可报告的有效 findings"
+  },
+  "findings": [],
+  "stats": {
+    "input": 0,
+    "output": 0,
+    "removed_by_ah": 0,
+    "downgraded_by_ah": 0,
+    "removed_by_diff_remediation": 0,
+    "fast_plus_applied": {
+      "chain": 0,
+      "challenge": 0,
+      "total": 0
+    }
+  }
+}
