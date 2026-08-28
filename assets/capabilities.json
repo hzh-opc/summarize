@@ -77,6 +77,24 @@
       "keywords": ["知识图谱", "关系图谱", "实体关系", "图谱", "knowledge graph", "关系网络", "network graph", "实体网络", "图数据库", "关系图", "nebula", "neo4j"],
       "fallback": "local",
       "fallback_note": "缺失时本技能输出 mermaid graph（graph TD）代码块或 markdown 邻接表，标注实体与关系，可一键导入 neo4j/图数据库/可视化工具"
+    },
+    "entity_extract": {
+      "purpose": "从摘要/原文抽取实体、关系与关键要素（命名实体识别、信息抽取、三元组/事件抽取），放大摘要的可结构化性",
+      "keywords": ["实体抽取", "命名实体", "实体识别", "关系抽取", "信息抽取", "entity extraction", "entity recognition", "三元组抽取", "事件抽取", "要素抽取", "结构化抽取"],
+      "fallback": "local",
+      "fallback_note": "缺失时本技能用关键词/正则在原文做轻量实体候选列表（实体—类型—出现句），提示可安装 NER 技能提升质量；绝不因缺失报错"
+    },
+    "ppt": {
+      "purpose": "把摘要/要点生成演示文稿（pptx/幻灯片），放大摘要的可呈现性",
+      "keywords": ["演示文稿生成", "ppt 生成", "pptx 生成", "ppt 制作", "幻灯片制作", "演示文稿制作", "powerpoint 制作", "slides 制作", "pptx", "生成ppt", "演示文稿创作", "deck 生成"],
+      "fallback": "local",
+      "fallback_note": "缺失时本技能输出结构化 PPT 大纲（每页标题 + 要点 + 备注的 markdown 分级），用户可一键粘贴进 PowerPoint/语雀/腾讯文档等，无需外部技能"
+    },
+    "chart": {
+      "purpose": "把摘要中的结构化数据/对比项渲染为图表（柱状图/折线图/饼图/数据可视化），放大摘要的可读性",
+      "keywords": ["图表生成", "柱状图生成", "折线图生成", "饼图生成", "散点图生成", "echarts", "plotly", "统计图生成", "图表绘制", "生成图表", "数据可视化图表", "xychart", "图表制作", "数据图表生成"],
+      "fallback": "local",
+      "fallback_note": "缺失时本技能输出 markdown 数据表 + 趋势文字描述，用户可粘贴进 Excel/飞书多维表/图表工具；或给出 mermaid xychart 代码块（若渲染器支持）"
     }
   }
 }
