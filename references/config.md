@@ -19,7 +19,6 @@
 | `desensitization` | `auto` \| `off` | `auto` | 脱敏协同：auto=若检测到任意脱敏能力（经 `skill_bridge.py` 泛匹配，不限于 `desensitization-sop`）则按其上云前/后闭环执行；off=不协同（仅本地、不外发时可选） |
 | `feedback_email` | 字符串 | `hzh.opc@foxmail.com` | 改进建议反馈收件人 |
 | `feedback_dir` | 字符串 | `./.summarize_feedback` | 改进建议/对比报告的本地落盘目录 |
-| `max_input_chars` | 整数 | `200000` | 超长输入截断阈值（避免极端耗时），截断前保留首尾 |
 
 ## summary_length 子字段
 
@@ -47,7 +46,7 @@ summary_length:
 
 本技能通过 `scripts/skill_bridge.py` + `assets/capabilities.json` 实现**数据驱动**的协同技能检测，不假定任何外部技能已安装：
 
-- **检测机制**：`skill_bridge.py` 扫描用户级 `~/.workbuddy/skills` 与项目级 `./.workbuddy/skills`，按 `capabilities.json` 的候选关键词泛匹配各技能 SKILL.md 的 name/description/tags，判定 `desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` / `knowledge_base` / `translation` 等能力是否可用。**不限定具体技能名**，故用户安装的任意脱敏/OCR/转录/知识库/翻译技能都能被识别。**默认每次调用 live 重扫 → 用户新装协同技能即时生效**；另可用 `--save-cache` 把「能力→技能」映射固化成 `capabilities.detected.json` 快照（见下）。
+- **检测机制**：`skill_bridge.py` 扫描用户级 `~/.workbuddy/skills` 与项目级 `./.workbuddy/skills`，按 `capabilities.json` 的候选关键词泛匹配各技能 SKILL.md 的 name/description/tags，判定 `desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` / `knowledge_base` / `translation` / `rag` / `search` / `mindmap` / `diagram` / `graph` / `entity_extract` / `ppt` / `chart` / `qa_router` / `podcast` / `spreadsheet` 共 19 项能力是否可用。**不限定具体技能名**，故用户安装的任意脱敏/OCR/转录/知识库/翻译技能都能被识别。**默认每次调用 live 重扫 → 用户新装协同技能即时生效**；另可用 `--save-cache` 把「能力→技能」映射固化成 `capabilities.detected.json` 快照（见下）。
 - **对接方式**：命中后用 **Skill 工具**加载该技能并遵循其流程——取文类能力（ocr/语音/视频/文档/网页）把其产物（文本）作为 `summarize.py` 输入；输出后协同能力（`knowledge_base`/`translation`）在摘要产出后调用，把摘要/要点写入知识库或做目标语翻译。本技能脚本只消费纯文本，因此外部技能缺失只阻断「取文」、不阻断「摘要」。
 - **容错降级**：每个能力在 `capabilities.json` 中定义了 `fallback` 策略：
   - `local`：本技能有内置本地替代（脱敏 → 仅本地处理；`knowledge_base` 缺失 → 沉淀到本地 `./要点沉淀/YYYYMMDD.md`）。
@@ -76,4 +75,4 @@ summary_length:
 
 ## 扩展：接入用户其它已安装技能
 
-`assets/capabilities.json` 是开放清单。已落地 8 类能力：`desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` / `knowledge_base`(要点沉淀) / `translation`(多语摘要)。新增能力只需在 `capabilities` 下追加键（如 `rag` / `search` / `mindmap`），给出 `purpose` / `keywords` / `fallback` / `fallback_note`，`skill_bridge.py` 即自动识别匹配到的技能，**无需改脚本**；若属「输出后协同」（如沉淀/多语），再在 SKILL.md 仿第 4.5 节补一段对接分支即可。若某技能未被识别，补其描述特征词到 `keywords` 即可。这样"非限定本机已安装技能"，也为未来任意协同技能预留统一入口。
+`assets/capabilities.json` 是开放清单。已落地 19 项能力：取文类 `desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch`；输出后协同类 `knowledge_base`(要点沉淀) / `translation`(多语摘要) / `rag`(基于原文问答) / `search`(受控联网补全) / `mindmap`(脑图) / `diagram`(图示) / `graph`(关系图谱) / `entity_extract`(实体抽取) / `ppt`(演示文稿) / `chart`(图表) / `qa_router`(问答路由) / `podcast`(口播音频) / `spreadsheet`(表格)。新增能力只需在 `capabilities` 下追加键，给出 `purpose` / `keywords` / `fallback` / `fallback_note`，`skill_bridge.py` 即自动识别匹配到的技能，**无需改脚本**；若属「输出后协同」（如沉淀/多语/可视化），再在 SKILL.md 仿第 4.5 / 4.7 节补一段对接分支即可。若某技能未被识别，补其描述特征词到 `keywords` 即可。这样"非限定本机已安装技能"，也为未来任意协同技能预留统一入口。
