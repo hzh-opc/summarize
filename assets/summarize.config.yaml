@@ -22,5 +22,3 @@ desensitization: auto       # auto | off  （auto=已装 desensitization-sop 则
 
 feedback_email: hzh.opc@foxmail.com
 feedback_dir: ./.summarize_feedback
-
-max_input_chars: 200000     # 超长输入截断阈值（保留首尾）
