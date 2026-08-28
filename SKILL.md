@@ -78,6 +78,19 @@ $PY <技能目录>/scripts/summarize.py <输入1> [<输入2> ...] \
 - 质量评估指标与评分见 `references/quality-eval.md`。
 - 若用户要求「沉淀到知识库 / 出多语版本」，转入第 4.5 节的输出后协同分支（该分支默认不主动触发）。
 - **隔离原则**：摘要正文是用户交付物，应独立、干净地呈现；质量评估 / 对比改进建议属诊断信息，篇幅较长时落盘（`feedback_dir` / 审计报告文件），对话内仅给结论与关键分数，**不与摘要正文混排、不把审计长文铺进对话**。
+- **交付物参考样式**（面向最终用户，非技术用户可直接阅读，无需关心命令与脚本）：
+
+```markdown
+## 摘要
+
+（摘要正文，每条要点可用一句原文支撑，需要溯源时附「见原文第 N 段」）
+
+**关键词**：关键词1 · 关键词2 · 关键词3
+
+**一句话核心**：（TL;DR 结论，可选）
+```
+
+> 质量评估、脱敏审计等诊断信息**不进入**上面的交付物，另见 `references/quality-eval.md`。
 
 ### 4. 云端结果对比与改进闭环（可选，建议开启）
 若 `compare_cloud: true` 或曾走 cloud/hybrid，运行：
@@ -152,7 +165,7 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap ocr --quiet && 
 2. 图片/扫描件 → 检测 `ocr`：可用则调用 OCR 技能转文字；缺失 → `ask` 降级（不强行处理二进制）。
 3. 音频 → 检测 `speech_transcription`：可用则转文字；缺失 → `ask` 降级。
 4. 视频 → 检测 `video_transcript`：可用则转文字；缺失 → `ask` 降级。
-5. `.docx` / `.pdf` → 检测 `document_text`：可用则落地文本；缺失 → `ask` 降级。
+5. `.docx` / `.pdf` → 检测 `document_text`：可用则落地文本；缺失 → `ask` 降级。宿主若自带文档处理工具/插件（如 WorkBuddy 的 `tencent-local-office-edit`、`tencent-docs-routing` 等，位于插件/连接器目录、不经 `skill_bridge` 扫描），也可直接用于落地文本，取文结果同样只作 `summarize.py` 的输入。
 6. 网页 URL → 检测 `web_fetch`：可用则调用，否则回退 `WebFetch` 工具。抓取内容可能含敏感信息，须过第 4 节脱敏协同。
 
 ### 4. 脱敏协同（通用检测，零耦合）
@@ -188,6 +201,23 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 - **absent（fallback=tool）**：若用户确实需要多语摘要，仅把 `--brief` 紧凑中间产物或本地短摘要送云端翻译（**原始长文仍留本机**），并提示未做脱敏的隐私风险；若用户不需要翻译，则跳过。
 
 > 这两条分支与主流程解耦：用户不要求沉淀/翻译时，即使对应技能可用也**不主动触发**，避免副作用。
+
+### 4.6 安装新的协同技能后：及时刷新检测（更新设置）
+
+本技能对协同能力的检测**默认每次调用都 live 重扫** `~/.workbuddy/skills` 与 `./.workbuddy/skills`，因此用户**新安装的协同技能在下一轮对话/调用即自动生效**，无需手动改配置。为便于把「能力→技能」映射固化成可读的协同设置快照，并提供显式刷新入口，可用 `--save-cache`：
+
+```bash
+PY=<受管 python3>
+SKILL_DIR=<技能目录>
+# 安装/卸载任意协同技能后，刷新映射快照（写入 assets/capabilities.detected.json）
+$PY $SKILL_DIR/scripts/skill_bridge.py --map $SKILL_DIR/assets/capabilities.json \
+    --exclude summarize --save-cache --format txt
+# 下次需要加速时读缓存（缓存缺失自动回退 live）
+$PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format txt
+```
+
+- `--save-cache` 产出的 `capabilities.detected.json` 即本技能的**协同设置快照**：记录每个能力命中了哪个技能（含 score）、缺失时走哪种 `fallback`。它既能作为审计/排查依据，也是「用户装了新技能后更新设置」的显式动作。
+- 智能体在「处理流程 0.5」每次仍走 live 重扫；`--use-cache` 仅在明确要跳过重扫、且已 `save-cache` 过时作为加速手段。
 
 ### 4.7 输出后协同：问答 / 补全 / 可视化 / 抽取 / 演示 / 图表（rag · search · mindmap · diagram · graph · entity_extract · ppt · chart）
 
@@ -354,23 +384,6 @@ $PY $SKILL_DIR/scripts/spreadsheet.py <输入.txt> [-] \
     [--format csv|html|md|xlsx] [--out PATH]
 # 输出：CSV 文本 / 自包含 HTML 多表格（直接渲染）/ markdown 表 / .xlsx 工作簿；--from-json 时接 structured_summary 的 JSON 产物
 ```
-
-### 4.6 安装新的协同技能后：及时刷新检测（更新设置）
-
-本技能对协同能力的检测**默认每次调用都 live 重扫** `~/.workbuddy/skills` 与 `./.workbuddy/skills`，因此用户**新安装的协同技能在下一轮对话/调用即自动生效**，无需手动改配置。为便于把「能力→技能」映射固化成可读的协同设置快照，并提供显式刷新入口，可用 `--save-cache`：
-
-```bash
-PY=<受管 python3>
-SKILL_DIR=<技能目录>
-# 安装/卸载任意协同技能后，刷新映射快照（写入 assets/capabilities.detected.json）
-$PY $SKILL_DIR/scripts/skill_bridge.py --map $SKILL_DIR/assets/capabilities.json \
-    --exclude summarize --save-cache --format txt
-# 下次需要加速时读缓存（缓存缺失自动回退 live）
-$PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format txt
-```
-
-- `--save-cache` 产出的 `capabilities.detected.json` 即本技能的**协同设置快照**：记录每个能力命中了哪个技能（含 score）、缺失时走哪种 `fallback`。它既能作为审计/排查依据，也是「用户装了新技能后更新设置」的显式动作。
-- 智能体在「处理流程 0.5」每次仍走 live 重扫；`--use-cache` 仅在明确要跳过重扫、且已 `save-cache` 过时作为加速手段。
 
 ### 5. 扩展：接入「用户其它已安装技能」
 
