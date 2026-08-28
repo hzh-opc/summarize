@@ -95,6 +95,24 @@
       "keywords": ["图表生成", "柱状图生成", "折线图生成", "饼图生成", "散点图生成", "echarts", "plotly", "统计图生成", "图表绘制", "生成图表", "数据可视化图表", "xychart", "图表制作", "数据图表生成"],
       "fallback": "local",
       "fallback_note": "缺失时本技能输出 markdown 数据表 + 趋势文字描述，用户可粘贴进 Excel/飞书多维表/图表工具；或给出 mermaid xychart 代码块（若渲染器支持）"
+    },
+    "qa_router": {
+      "purpose": "把摘要/要点路由到合适的问答技能，做基于原文的多轮追问与分派（问题→技能/答案分发）",
+      "keywords": ["问答路由", "问题路由", "qa router", "qa 路由", "question routing", "多轮问答", "问答分发", "问答编排", "问题分派", "faq 路由"],
+      "fallback": "local",
+      "fallback_note": "缺失时本技能用「源文忠实」索引/回查 + --cite 溯源在原文做局部问答，按关键词在原文精准取片段作答，无需外部问答路由技能"
+    },
+    "podcast": {
+      "purpose": "把摘要/要点转为播客或口播音频（文本→语音/音频生成），放大摘要的「可听性」",
+      "keywords": ["播客生成", "podcast 生成", "音频生成", "语音合成", "tts", "口播稿", "声音生成", "播客制作", "音频内容生成", "有声摘要"],
+      "fallback": "local",
+      "fallback_note": "缺失时本技能输出口播稿（纯文本/markdown 分级讲稿），用户可一键粘贴进任意 TTS / 播客工具生成音频，无需外部技能"
+    },
+    "spreadsheet": {
+      "purpose": "把摘要中的结构化数据/对比项生成表格或解析已有表格（电子表格/CSV/多维表），放大摘要的「可计算性」",
+      "keywords": ["表格处理", "电子表格", "spreadsheet", "excel 生成", "csv 生成", "表格生成", "多维表", "表格制作", "数据表生成", "表格解析"],
+      "fallback": "local",
+      "fallback_note": "缺失时本技能输出 markdown 表格 / CSV 文本（可由 structured_summary.py 预抽取结构），用户可粘贴进 Excel/飞书多维表，无需外部技能"
     }
   }
 }
