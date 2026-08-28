@@ -13,16 +13,25 @@
 summarize/
 ├── SKILL.md                    # 技能主指令（供 WorkBuddy 等智能体加载）
 ├── scripts/
-│   ├── summarize.py            # 本地抽取式摘要 + 关键词 + 质量评估
+│   ├── summarize.py            # 本地抽取式摘要 + 关键词 + 质量评估（含 --cite/--tldr）
 │   ├── compare.py              # 云端×本地对比与改进建议
-│   └── skill_bridge.py         # 协同技能检测与对接（零依赖，关键词泛匹配）
+│   ├── skill_bridge.py         # 协同技能检测与对接（零依赖，关键词泛匹配）
+│   ├── diff_summary.py         # 两份文档的差异/变更摘要
+│   ├── batch_summary.py        # 目录批量摘要 + 索引
+│   ├── consistency_check.py    # 摘要-原文一致性自检（守护源文忠实）
+│   ├── pii_precheck.py         # 上云前 PII 预检（隐私守门员）
+│   ├── hierarchical_summary.py # 层级摘要（概览→要点→细节）
+│   ├── structured_summary.py   # 结构化抽取（问答/列表/定义/表格）
+│   ├── mindmap_import.py       # 思维导图反向导入（含 --markmap 渲染）
+│   ├── qa_router.py            # 问答路由多轮状态机（本地兜底）
+│   ├── podcast.py              # 口播稿生成（可选 --tts 合成音频）
+│   └── spreadsheet.py          # 表格生成/解析（可选 --format xlsx）
 ├── references/
 │   ├── config.md               # 配置项说明
 │   └── quality-eval.md         # 质量评估方法
 └── assets/
     ├── summarize.config.yaml   # 默认配置模板
-    ├── capabilities.json       # 协同能力清单（可扩展，不限定具体技能名）
-    └── capabilities.detected.json  # 检测缓存快照（--save-cache 生成，可纳入 .gitignore）
+    └── capabilities.json       # 协同能力清单（可扩展，不限定具体技能名）
 ```
 
 ## 快速使用
@@ -49,10 +58,10 @@ python3 scripts/compare.py --local 本地摘要.txt --cloud 云端摘要.txt --o
 
 ## 协同技能检测、对接与容错（健壮性核心）
 
-本技能不假定任何外部技能已安装。`scripts/skill_bridge.py` 扫描用户级/项目级技能目录，按 `assets/capabilities.json` 的关键词泛匹配各技能 SKILL.md 描述，判定 8 类能力是否可用——**不限定具体技能名**，故用户安装的任意脱敏/OCR/转录/知识库/翻译技能都能被识别对接：
+本技能不假定任何外部技能已安装。`scripts/skill_bridge.py` 扫描用户级/项目级技能目录，按 `assets/capabilities.json` 的关键词泛匹配各技能 SKILL.md 描述，判定 19 项能力是否可用——**不限定具体技能名**，故用户安装的任意脱敏/OCR/转录/知识库/翻译技能都能被识别对接：
 
 - 取文类：`desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch`
-- 输出后协同：`knowledge_base`（要点沉淀）/ `translation`（多语摘要）
+- 输出后协同：`knowledge_base`(要点沉淀) / `translation`(多语摘要) / `rag`(基于原文问答) / `search`(受控联网补全) / `mindmap`(脑图) / `diagram`(图示) / `graph`(关系图谱) / `entity_extract`(实体抽取) / `ppt`(演示文稿) / `chart`(图表) / `qa_router`(问答路由) / `podcast`(口播音频) / `spreadsheet`(表格)
 
 ```bash
 # 全量检测（排除调用方自身，避免描述中的输入形态被误判为自身能力）
@@ -65,10 +74,10 @@ python3 scripts/skill_bridge.py --exclude summarize --cap ocr --quiet && echo �
 python3 scripts/skill_bridge.py --map assets/capabilities.json --exclude summarize --save-cache --format txt
 ```
 
-- **对接**：取文类命中后用 Skill 工具加载对应技能产出文本，作为 `summarize.py` 的输入；输出后协同类（`knowledge_base`/`translation`）在摘要产出后调用，把摘要/要点写入知识库或做目标语翻译。本技能脚本只消费纯文本。
+- **对接**：取文类命中后用 Skill 工具加载对应技能产出文本，作为 `summarize.py` 的输入；输出后协同类（`knowledge_base`/`translation`/`rag`/`search` 等）在摘要产出后调用，把摘要/要点写入知识库、做目标语翻译或可视化。本技能脚本只消费纯文本。
 - **容错降级**：每个能力有 `fallback` 策略——`local`（脱敏→仅本地处理；`knowledge_base` 缺失→沉淀到本地 `./要点沉淀/YYYYMMDD.md`）、`ask`（OCR/语音/视频/文档缺失→请用户提供文本）、`tool`（网页缺失→回退内置 WebFetch；`translation` 缺失→仅对 brief/短摘要送云端翻译，原始长文不上云）。**外部技能缺失只阻断「取文」、不阻断「摘要」。**
 - **新装技能即时生效**：`skill_bridge.py` 默认每次调用 live 重扫技能目录，用户新装的协同技能无需改配置即被识别。
-- **可扩展**：在 `capabilities.json` 追加任意能力键（如 `rag` / `search`）即自动生效，无需改脚本。
+- **可扩展**：在 `capabilities.json` 追加任意能力键即自动生效，无需改脚本。
 
 ## 源文忠实原则（后续展开必守）
 
