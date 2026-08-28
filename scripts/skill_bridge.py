@@ -82,6 +82,24 @@ DEFAULT_CAPS = {
             "fallback": "tool",
             "fallback_note": "缺失时如需多语摘要，仅对 --brief 紧凑中间产物(或本地短摘要)送云端翻译，原始长文不上云；否则提示用户安装翻译技能",
         },
+        "rag": {
+            "purpose": "基于原文的问答式展开（检索增强/局部精准问答），让用户就摘要要点做「溯源式」追问",
+            "keywords": ["rag", "检索增强", "retrieval", "retrieval-augmented", "检索增强生成", "向量检索", "向量检索问答", "语义检索问答", "本地知识库问答", "rag 问答"],
+            "fallback": "local",
+            "fallback_note": "缺失时本技能「源文忠实」的索引/定位/回查机制即轻量本地 RAG：用关键词/句在原文精准取片段做局部问答，无需外部 RAG 技能",
+        },
+        "search": {
+            "purpose": "摘要后续处理的受控联网补全（外部补充），仅当原文不足时启用且须三段标记",
+            "keywords": ["联网搜索", "web search", "search", "搜索", "检索网页", "tavily", "perplexity", "搜索引擎", "联网检索", "search skill", "联网补全"],
+            "fallback": "tool",
+            "fallback_note": "缺失时回退内置 WebSearch 工具做受控补全，输出须按【原文】/【联网补全】/【处理结果】三段标记，外部内容不得混入看似原文",
+        },
+        "mindmap": {
+            "purpose": "把摘要要点可视化为思维导图/结构化脑图，放大摘要可探索性",
+            "keywords": ["思维导图", "mindmap", "mind map", "脑图", "markmap", "xmind", "mermaid", "可视化脑图", "结构化导图", "导图", "思维图"],
+            "fallback": "local",
+            "fallback_note": "缺失时本技能直接输出层级要点大纲（markdown 缩进或 mermaid 代码块），可一键粘贴进 markmap/XMind/语雀等脑图工具，无需外部技能",
+        },
     }
 }
 

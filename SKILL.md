@@ -130,6 +130,9 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap ocr --quiet && 
 | `web_fetch` | 网页抓文本 | 用 **Skill 工具**加载该技能；未命中则回退内置 `WebFetch` 工具 | `tool`：回退 `WebFetch`（仍过脱敏协同） |
 | `knowledge_base` | 摘要/要点沉淀进知识库 | 用 **Skill 工具**加载该技能，把「摘要+要点+来源」入库（见第 4.5 节） | `local`：沉淀到本地 `./要点沉淀/YYYYMMDD.md` |
 | `translation` | 多语摘要 / 翻译 | 用 **Skill 工具**加载该技能，对摘要做目标语翻译（见第 4.5 节） | `tool`：仅对 brief/短摘要送云端翻译，原始长文不上云 |
+| `rag` | 基于原文的问答式展开（检索增强/局部精准问答） | 用 **Skill 工具**加载 RAG 技能，在**原文**上建索引做溯源式追问（见第 4.7 节） | `local`：本技能「源文忠实」索引回查即轻量 RAG，按关键词在原文取片段 |
+| `search` | 受控联网补全（外部补充） | 用 **Skill 工具**加载搜索技能；联网补全须按三段标记（见第 4.7 节） | `tool`：回退内置 `WebSearch`，仍须三段标记 |
+| `mindmap` | 摘要要点可视化思维导图 | 用 **Skill 工具**加载脑图技能产出导图（见第 4.7 节） | `local`：输出层级要点大纲（md/mermaid），可导入脑图工具 |
 
 > 对接外部技能的标准动作：用 **Skill 工具**加载其 `SKILL.md` → 遵循其流程产出文本 → 把文本作为本技能 `summarize.py` 的输入。**本技能脚本只消费纯文本**，因此外部技能缺失只阻断「取文」、不阻断「摘要」。
 
@@ -176,6 +179,23 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 
 > 这两条分支与主流程解耦：用户不要求沉淀/翻译时，即使对应技能可用也**不主动触发**，避免副作用。
 
+### 4.7 输出后协同：基于原文的问答（rag）、受控联网补全（search）、要点可视化（mindmap）
+
+这三类能力同样发生在**摘要产出之后**，用于放大摘要的「可探索性」与「可用性」。先经 `skill_bridge.py` 检测，命中即用 **Skill 工具**加载对接，缺失则按 `fallback` 降级。与主流程解耦：用户不要求时即使技能可用也**不主动触发**。
+
+**C. 基于原文的问答式展开 rag（检索增强 / 局部精准问答）**
+- **available**：用 **Skill 工具**加载 RAG 技能，把摘要在**原文**上建索引，让用户就摘要要点做「溯源式」追问（问某要点在原文哪、原文怎么说的）。RAG 检索范围必须是**原文**，与「源文忠实」原则一致。
+- **absent（fallback=local）**：本技能「源文忠实」的索引 / 定位 / 回查机制即轻量本地 RAG——用关键词 / 句在原文中精准取片段，直接回答局部追问，无需外部 RAG 技能。
+
+**D. 受控联网补全 search**
+- **available**：用 **Skill 工具**加载搜索技能做外部补全。
+- **absent（fallback=tool）**：回退内置 `WebSearch` 工具。
+- **无论 available / absent，凡联网补全必须严格按「源文忠实」专节执行三段标记**：【原文】可溯源句 / 段落 ·【联网补全】附来源链接 / 出处 + 获取时间 ·【处理结果】分别依赖了哪些原文与补全；外部内容**不得混入看似原文**。**默认不联网**，仅当原文确实不足以满足本次后续处理需求时才走此分支。
+
+**E. 要点可视化 mindmap**
+- **available**：用 **Skill 工具**加载脑图技能，把「摘要 + 层级要点」渲染为思维导图 / 结构化脑图。
+- **absent（fallback=local）**：本技能直接输出带层级的要点大纲（markdown 缩进或 mermaid 代码块），用户可一键粘贴进 markmap / XMind / 语雀等任意脑图工具，**无需外部技能**。
+
 ### 4.6 安装新的协同技能后：及时刷新检测（更新设置）
 
 本技能对协同能力的检测**默认每次调用都 live 重扫** `~/.workbuddy/skills` 与 `./.workbuddy/skills`，因此用户**新安装的协同技能在下一轮对话/调用即自动生效**，无需手动改配置。为便于把「能力→技能」映射固化成可读的协同设置快照，并提供显式刷新入口，可用 `--save-cache`：
@@ -196,8 +216,8 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format 
 ### 5. 扩展：接入「用户其它已安装技能」
 
 `assets/capabilities.json` 是**开放清单**，本机制天然兼容用户未来安装的任何协同技能：
-- **已落地能力**：`desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` / `knowledge_base`(要点沉淀) / `translation`(多语摘要)。其中 `knowledge_base` 与 `translation` 为「输出后协同」，对接分支见第 4.5 节。
-- **新增能力**：在 JSON 的 `capabilities` 下追加任意键（如 `rag`、`search`、`mindmap`），给出 `purpose`、`keywords`（候选关键词）、`fallback` 与 `fallback_note`。`skill_bridge.py` 会自动识别匹配到的技能，无需改脚本。
+- **已落地能力**：`desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` / `knowledge_base`(要点沉淀) / `translation`(多语摘要) / `rag`(基于原文的问答式展开) / `search`(受控联网补全) / `mindmap`(要点可视化)。其中 `knowledge_base`/`translation` 对接见第 4.5 节，`rag`/`search`/`mindmap` 对接见第 4.7 节。
+- **新增能力**：在 JSON 的 `capabilities` 下追加任意键（如 `graph`、`diagram`、`entity_extract`），给出 `purpose`、`keywords`（候选关键词）、`fallback` 与 `fallback_note`。`skill_bridge.py` 会自动识别匹配到的技能，无需改脚本。
 - **触发新能力**：`skill_bridge.py --cap <新能力>` 检测 → 命中则按对应分支用 **Skill 工具**加载该技能并遵循其流程；未命中则按该能力的 `fallback` 降级。若属输出后协同（如沉淀/多语），仿第 4.5 节在 SKILL.md 补一段对接分支即可。
 - **关键词调优**：若某技能未被识别（描述措辞不同），只需在其 `keywords` 中补充该技能描述里的特征词即可，零代码改动。
 - **刷新设置**：安装/卸载协同技能后运行 `skill_bridge.py --save-cache`（见第 4.6 节），把「能力→技能」映射固化为 `capabilities.detected.json` 快照；本技能默认每次 live 重扫，新技能即时生效。
