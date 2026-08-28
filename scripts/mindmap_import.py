@@ -58,7 +58,9 @@ def clean_mermaid_text(raw):
     s = raw.strip()
     s = re.sub(r"::icon\([^)]*\)", "", s)          # 图标语法
     s = re.sub(r"<br\s*/?>", " ", s, flags=re.I)    # 换行标签
-    s = re.sub(r"^[A-Za-z0-9_\-]+\s*", "", s)       # 去掉 id 前缀（root((..)) → ((..))）
+    # 去掉 id 前缀（仅当后接括号形状，如 `root((..))`/`id[text]`；
+    # 纯文本节点如 `Shor 算法` 不应被误剥）
+    s = re.sub(r"^([A-Za-z0-9_\-]+)(?=\s*[\[({])", "", s)
     # 反复剥离最外层括号（兼容 ((text)) / [text] / {text} 及它们的组合）
     changed = True
     while changed:
@@ -221,6 +223,41 @@ def flatten_text(roots):
     return "\n".join(out)
 
 
+def render_markmap_md(roots):
+    """把节点树渲染为 markmap 可识别的 markdown：根作 # 标题，子节点作嵌套 - 列表。"""
+    lines = []
+    for r in roots:
+        lines.append("# " + r["text"])
+        def walk(node, depth):
+            pad = "  " * depth
+            lines.append("%s- %s" % (pad, node["text"]))
+            for c in node["children"]:
+                walk(c, depth + 1)
+        for c in r["children"]:
+            walk(c, 0)
+    return "\n".join(lines)
+
+
+def render_markmap_html(roots, title="思维导图"):
+    """生成自包含 HTML，嵌入 markmap-autoloader（CDN），浏览器打开即渲染可交互脑图。
+
+    注意：查看时需联网加载 markmap 查看器（仅查看器来自 CDN，数据本身为本地生成）；
+    若需完全离线，可把 --format md 的输出粘贴进已安装的 markmap 编辑器/插件。
+    """
+    md = render_markmap_md(roots)
+    # 转义 HTML 特殊字符，markmap 解析 textContent 时会还原为原始 markdown
+    esc = md.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return (
+        "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n"
+        "<meta charset=\"utf-8\">\n"
+        "<title>%s · markmap</title>\n"
+        "<style>body{margin:0;font-family:system-ui,-apple-system,sans-serif}</style>\n"
+        "<script src=\"https://cdn.jsdelivr.net/npm/markmap-autoloader@0.18\"></script>\n"
+        "</head>\n<body>\n<div class=\"markmap\">\n%s\n</div>\n</body>\n</html>\n"
+        % (title, esc)
+    )
+
+
 def stats_of(roots):
     nodes = 0
     max_depth = 0
@@ -255,7 +292,7 @@ def re_summarize(flat_text, length=None, keywords_k=8):
 # CLI
 # ---------------------------------------------------------------------------
 def main():
-    ap = argparse.ArgumentParser(description="思维导图反向导入（脑图→大纲/树/json，可还原摘要）")
+    ap = argparse.ArgumentParser(description="思维导图反向导入（脑图→大纲/树/json，可还原摘要，可 markmap 渲染）")
     ap.add_argument("input", help="脑图/大纲源文件（或 - 读 stdin）")
     ap.add_argument("--format", default="md", choices=["md", "json", "txt"])
     ap.add_argument("--out", default=None, help="输出文件路径")
@@ -263,6 +300,9 @@ def main():
                     help="把展平文本喂回 summarize.py 引擎，额外输出由脑图还原的摘要")
     ap.add_argument("--length", type=int, default=3, help="--re-summarize 时的摘要句数")
     ap.add_argument("--keywords", type=int, default=6, help="--re-summarize 时的关键词数")
+    ap.add_argument("--markmap", action="store_true",
+                    help="生成可直接渲染的自包含 HTML（嵌入 markmap-autoloader），浏览器打开即见交互脑图")
+    ap.add_argument("--title", default="", help="--markmap 时的 HTML 标题（默认取首节点文本）")
     args = ap.parse_args()
 
     text = read_text(args.input)
@@ -273,6 +313,18 @@ def main():
     else:
         roots = build_tree(nodes)
     st = stats_of(roots)
+
+    if args.markmap:
+        title = args.title or (roots[0]["text"] if roots else "思维导图")
+        out = render_markmap_html(roots, title)
+        if not args.out:
+            base = os.path.splitext(os.path.basename(args.input))[0] if args.input != "-" else "mindmap"
+            args.out = base + ".mm.html"
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(out)
+        sys.stderr.write("已写入 markmap HTML：%s（节点数=%d，最大层级=%d）\n"
+                         % (args.out, st["node_count"], st["max_depth"]))
+        return
 
     if args.format == "json":
         payload = {"stats": st, "tree": roots}
