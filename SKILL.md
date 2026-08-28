@@ -141,8 +141,8 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap ocr --quiet && 
 | `ppt` | 摘要/要点生成演示文稿（pptx/幻灯片） | 用 **Skill 工具**加载演示文稿技能渲染成 PPT（见第 4.7 节） | `local`：输出结构化 PPT 大纲（每页标题+要点+备注的 markdown） |
 | `chart` | 摘要数据/对比项渲染图表（柱状/折线/饼图等） | 用 **Skill 工具**加载图表技能渲染（见第 4.7 节） | `local`：输出 markdown 数据表+趋势文字，或 mermaid xychart |
 | `qa_router` | 把摘要/要点路由到合适的问答技能做多轮追问与分派（基于原文） | 用 **Skill 工具**加载问答路由技能做问题分发/多轮问答（见第 4.7 节） | `local`：用「源文忠实」索引/回查 + `--cite` 在原文做局部问答 |
-| `podcast` | 把摘要/要点转为播客/口播音频（文本→语音），放大可听性 | 用 **Skill 工具**加载音频/播客生成技能（见第 4.7 节） | `local`：输出口播稿（纯文本/markdown 分级讲稿），可导入 TTS 工具 |
-| `spreadsheet` | 把摘要中的结构化数据/对比项生成或解析表格（电子表格/CSV/多维表） | 用 **Skill 工具**加载表格处理技能（见第 4.7 节） | `local`：输出 markdown 表格/CSV（可由 `structured_summary.py` 预抽取） |
+| `podcast` | 把摘要/要点转为播客/口播音频（文本→语音），放大可听性 | 用 **Skill 工具**加载音频/播客生成技能（见第 4.7 节） | `local`：输出口播稿（纯文本/markdown 分级讲稿），可导入 TTS 工具；可选 `--tts` 直接合成音频 |
+| `spreadsheet` | 把摘要中的结构化数据/对比项生成或解析表格（电子表格/CSV/多维表） | 用 **Skill 工具**加载表格处理技能（见第 4.7 节） | `local`：输出 markdown 表格/CSV（可由 `structured_summary.py` 预抽取）；可选 `--format xlsx` 导出 .xlsx |
 
 > 对接外部技能的标准动作：用 **Skill 工具**加载其 `SKILL.md` → 遵循其流程产出文本 → 把文本作为本技能 `summarize.py` 的输入。**本技能脚本只消费纯文本**，因此外部技能缺失只阻断「取文」、不阻断「摘要」。
 
@@ -223,14 +223,14 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 **I. 播客 / 口播音频 podcast（放大摘要可听性）**
 - **available**：用 **Skill 工具**加载音频 / 播客生成技能，把摘要 / 要点转为播客或有声稿。
 - **absent（fallback=local）**：本技能输出分级**口播稿**（markdown 讲稿：标题 + 要点 + 过渡语），用户可一键粘贴进任意 TTS / 播客工具生成音频，**无需外部技能**。
-- **本地兜底（原生脚本 `podcast.py`，见第 4.8 节 R）**：在外部音频 / 播客技能缺失时，本技能直接把「原文 / 摘要」转为可播报讲稿——复用 `summarize.py` 抽取核心句作章节要点（不编造），组织为开场白 / 主体 / 结尾并附 `[停顿]` 标记，估算字数与口播时长，输出 markdown / 纯文本 / json，纯本地、零依赖。
+- **本地兜底（原生脚本 `podcast.py`，见第 4.8 节 R）**：在外部音频 / 播客技能缺失时，本技能直接把「原文 / 摘要」转为可播报讲稿——复用 `summarize.py` 抽取核心句作章节要点（不编造），组织为开场白 / 主体 / 结尾并附 `[停顿]` 标记，估算字数与口播时长，输出 markdown / 纯文本 / json，纯本地、零依赖；并支持 `--tts` 可选直接合成音频（edge-tts 免费 / openai / azure，均优雅降级）。
 
 **J. 表格处理 spreadsheet（放大摘要可计算性）**
 - **available**：用 **Skill 工具**加载表格处理技能，把摘要中的结构化数据 / 对比项生成 Excel / CSV / 多维表，或解析已有表格。
 - **absent（fallback=local）**：本技能先用 `structured_summary.py` 预抽取结构化条目（问答 / 列表 / 定义 / 表格行），再输出 markdown 表格 / CSV 文本，用户可粘贴进 Excel / 飞书多维表，**无需外部技能**。
-- **本地兜底（原生脚本 `spreadsheet.py`，见第 4.8 节 S）**：在外部表格技能缺失时，本技能把结构化条目转为 CSV（可直接粘贴进 Excel / 飞书多维表）、自包含 HTML（每类一段 `<table>`，浏览器打开即渲染）、或 markdown 表格；也支持读 `structured_summary.py --format json` 的产物续接，**无需外部技能、零依赖**。
+- **本地兜底（原生脚本 `spreadsheet.py`，见第 4.8 节 S）**：在外部表格技能缺失时，本技能把结构化条目转为 CSV（可直接粘贴进 Excel / 飞书多维表）、自包含 HTML（每类一段 `<table>`，浏览器打开即渲染）、或 markdown 表格；也支持读 `structured_summary.py --format json` 的产物续接，**无需外部技能、零依赖**；并支持 `--format xlsx` 经 openpyxl 生成真正 .xlsx 工作簿（未装则优雅降级）。
 
-### 4.8 原生增强功能（溯源标注 / TL;DR / 差异摘要 / 批量索引 / 一致性自检 / PII 预检 / 层级摘要 / 结构化抽取 / mindmap 反向导入（含 markmap 渲染）/ qa_router 多轮状态机 / podcast 口播稿 / spreadsheet 表格）
+### 4.8 原生增强功能（溯源标注 / TL;DR / 差异摘要 / 批量索引 / 一致性自检 / PII 预检 / 层级摘要 / 结构化抽取 / mindmap 反向导入（含 markmap 渲染）/ qa_router 多轮状态机 / podcast 口播稿（可选 TTS 合成）/ spreadsheet 表格（可选 .xlsx 导出））
 
 这些是本技能**内置**能力（由脚本直接实现，不依赖任何外部协同技能，纯本地、零依赖），用于放大摘要的「可核查性 / 快读性 / 可对比性 / 批量可用性 / 双向可探索性 / 多轮可问答性」。用户要求时即用，默认不主动触发。
 
@@ -327,24 +327,32 @@ $PY $SKILL_DIR/scripts/qa_router.py --session state.json --original 原文.txt \
 # 多轮示例：首轮 --question "量子计算是什么？" → 次轮 --question "它有什么风险？"（自动消解「它」=上一轮 topic）
 ```
 
-**R. 播客 / 口播稿生成 `podcast.py`（本地兜底，零依赖）**
+**R. 播客 / 口播稿生成 `podcast.py`（本地兜底，零依赖；可选 TTS 合成）**
 - 在外部音频 / 播客生成技能缺失时，本技能把「原文 / 摘要」转为可播报讲稿：复用 `summarize.py` 引擎抽取核心句作为章节要点（**不编造，全部来自原文**），组织为开场白 → 主体（每章标题 + 口播稿 + `[停顿]` 标记）→ 结尾（总结 + 行动号召），并估算总字数与口播时长（中文 ~220 字/分钟、英文 ~150 wpm）。输出 markdown 分级讲稿 / 纯文本口播稿（便于直接粘贴进 TTS）/ json。
+- **可选直接合成音频（`--tts`）**：讲稿产出后，可用 `--tts` 把全文直接合成音频，无需手动粘贴进 TTS 工具。支持三类 provider，均以 import guard 优雅降级（**未装对应包 / 缺密钥时不崩溃，给出安装提示并退出，零依赖默认不受影响**）：
+  - `edge` —— `edge-tts`，**免费、无需 API Key**（中文推荐 `zh-CN-XiaoxiaoNeural`）；
+  - `openai` —— OpenAI TTS，需 `OPENAI_API_KEY`（或 `--api-key`），模型默认 `tts-1`；
+  - `azure` —— Azure 语音服务，需 `AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION`（纯标准库联网，无第三方包）。
 - 用法与输出：
 ```bash
 $PY $SKILL_DIR/scripts/podcast.py <输入.txt> [-] \
     [--title 主题] [--host 节目名] [--chapters N] [--keywords K] \
-    [--format md|txt|json] [--out PATH]
+    [--format md|txt|json] [--out PATH] \
+    [--tts none|edge|openai|azure] [--voice 语音名] [--audio 输出.mp3] \
+    [--api-key KEY] [--region 区域] [--model tts-1]
 # 输出：分级口播稿（md）/ 纯文本口播稿（txt，直接喂 TTS）/ 结构化（json）；附预计时长
+# 示例：--tts edge --voice zh-CN-YunxiNeural（中文男声，免费）；--tts openai --voice nova
 ```
 
-**S. 表格生成 / 解析 `spreadsheet.py`（本地兜底，零依赖）**
-- 在外部表格处理技能缺失时，本技能把「原文 / 摘要」中的结构化数据转为电子表格可消费的形态：复用 `structured_summary.py` 的启发式抽取问答对 / 列表项 / 定义说明 / 表格行，输出 CSV（可直接粘贴进 Excel / 飞书多维表 / Numbers）、自包含 HTML（每类一段 `<table>`，浏览器打开即渲染）、或 markdown 表格。也支持读 `structured_summary.py --format json` 的产物续接（`--from-json`），**无需外部技能、零依赖**（不生成 .xlsx，因需 openpyxl 非默认依赖；CSV/HTML 已覆盖绝大多数下游）。
+**S. 表格生成 / 解析 `spreadsheet.py`（本地兜底，零依赖；可选 .xlsx 导出）**
+- 在外部表格处理技能缺失时，本技能把「原文 / 摘要」中的结构化数据转为电子表格可消费的形态：复用 `structured_summary.py` 的启发式抽取问答对 / 列表项 / 定义说明 / 表格行，输出 CSV（可直接粘贴进 Excel / 飞书多维表 / Numbers）、自包含 HTML（每类一段 `<table>`，浏览器打开即渲染）、或 markdown 表格。也支持读 `structured_summary.py --format json` 的产物续接（`--from-json`），**无需外部技能、零依赖**。
+- **可选生成真正 .xlsx（`--format xlsx`）**：经 `openpyxl` 生成多 sheet 工作簿（每类数据一个表：问答对 / 列表项 / 定义说明 / 表格，表头加粗 + 自动列宽 + 单元格换行），可直接双击打开。**未安装 openpyxl 时优雅降级**：打印 `pip install openpyxl` 提示并退出，不影响 CSV/HTML/md 默认路径。
 - 用法与输出：
 ```bash
 $PY $SKILL_DIR/scripts/spreadsheet.py <输入.txt> [-] \
     [--from-json] [--mode auto|qa|list|definition|table] \
-    [--format csv|html|md] [--out PATH]
-# 输出：CSV 文本 / 自包含 HTML 多表格（直接渲染）/ markdown 表；--from-json 时接 structured_summary 的 JSON 产物
+    [--format csv|html|md|xlsx] [--out PATH]
+# 输出：CSV 文本 / 自包含 HTML 多表格（直接渲染）/ markdown 表 / .xlsx 工作簿；--from-json 时接 structured_summary 的 JSON 产物
 ```
 
 ### 4.6 安装新的协同技能后：及时刷新检测（更新设置）
@@ -383,4 +391,4 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format 
 
 根据日常工作需求，参考市场同类技能，可继续补充：更长上下文的滑动窗口摘要（已支持）、多文档联合摘要（已支持）、按用户画像调节摘要语气（已支持 `--tone`）、与 `rag`/`search` 类技能联动做「摘要即检索」（已支持 `rag`/`search` 协同）。
 
-**已落地的原生增强功能**（无需外部技能，见第 4.8 节）：`--cite` 原文溯源标注、`--tldr` 一句话核心结论、`diff_summary.py` 差异/变更摘要、`batch_summary.py` 批量目录摘要+索引、`consistency_check.py` 摘要-原文一致性自检、`pii_precheck.py` 上云前 PII 预检、`hierarchical_summary.py` 层级摘要、`structured_summary.py` 结构化抽取、`mindmap_import.py` 思维导图反向导入（含 `--markmap` 直接渲染）、`qa_router.py` 问答路由多轮状态机、`podcast.py` 口播稿生成、`spreadsheet.py` 表格生成/解析。
+**已落地的原生增强功能**（无需外部技能，见第 4.8 节）：`--cite` 原文溯源标注、`--tldr` 一句话核心结论、`diff_summary.py` 差异/变更摘要、`batch_summary.py` 批量目录摘要+索引、`consistency_check.py` 摘要-原文一致性自检、`pii_precheck.py` 上云前 PII 预检、`hierarchical_summary.py` 层级摘要、`structured_summary.py` 结构化抽取、`mindmap_import.py` 思维导图反向导入（含 `--markmap` 直接渲染）、`qa_router.py` 问答路由多轮状态机、`podcast.py` 口播稿生成（可选 `--tts` 合成音频）、`spreadsheet.py` 表格生成/解析（可选 `--format xlsx` 导出 .xlsx）。

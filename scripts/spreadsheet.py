@@ -13,8 +13,10 @@ spreadsheet.py — 表格生成 / 解析（本地兜底，零依赖）
       * html —— 自包含 HTML，每类数据一段 <table>，浏览器打开即「直接渲染」；
       * md   —— 每类一段 markdown 表格。
 
-纯标准库实现（零依赖、跨平台）。不生成 .xlsx（需 openpyxl，非默认依赖）；
-CSV / HTML 已覆盖绝大多数「表格」下游需求。
+纯标准库实现（零依赖、跨平台）。默认输出 CSV / 自包含 HTML / markdown 表，
+已覆盖绝大多数「表格」下游需求；**可选** `--format xlsx` 经 openpyxl 生成真正的
+.xlsx 工作簿（每类数据一个 sheet），未安装 openpyxl 时优雅降级并提示安装命令，
+不影响零依赖默认路径。
 """
 
 import sys
@@ -175,18 +177,69 @@ def render_md(grouped):
 
 
 # ---------------------------------------------------------------------------
+# XLSX 渲染（可选；经 openpyxl，未安装则优雅降级）
+# ---------------------------------------------------------------------------
+def render_xlsx(grouped, out_path):
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+    except Exception:
+        sys.stderr.write("错误：生成 .xlsx 需要 openpyxl。请先安装：\n"
+                         "  pip install openpyxl\n然后重试 --format xlsx。\n")
+        sys.exit(2)
+
+    wb = Workbook()
+    wb.remove(wb.active)  # 移除默认空白 sheet
+    head_fill = PatternFill("solid", fgColor="F5F7FA")
+    head_font = Font(bold=True)
+    wrap = Alignment(vertical="top", wrap_text=True)
+
+    specs = [
+        ("qa", "问答对", ["问题", "回答"]),
+        ("list", "列表项", ["内容"]),
+        ("definition", "定义说明", ["术语", "释义"]),
+        ("table", "表格", None),  # 表头取 _table_header
+    ]
+    for t, label, headers in specs:
+        rows = grouped.get(t)
+        if not rows:
+            continue
+        ws = wb.create_sheet(title=label[:31])
+        hdr = grouped.get("_table_header") if t == "table" else headers
+        ws.append(list(hdr))
+        for cell in ws[1]:
+            cell.font = head_font
+            cell.fill = head_fill
+            cell.alignment = wrap
+        for r in rows:
+            ws.append([c if c is not None else "" for c in r])
+        for col in ws.columns:
+            width = max((len(str(c.value)) for c in col if c.value is not None), default=10)
+            ws.column_dimensions[col[0].column_letter].width = min(max(width + 2, 12), 60)
+        for row in ws.iter_rows(min_row=2):
+            for cell in row:
+                cell.alignment = wrap
+
+    if not wb.sheetnames:
+        ws = wb.create_sheet(title="无数据")
+        ws.append(["未从输入抽取到结构化条目"])
+
+    wb.save(out_path)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 def main():
-    ap = argparse.ArgumentParser(description="表格生成/解析（本地兜底，零依赖）")
+    ap = argparse.ArgumentParser(description="表格生成/解析（本地兜底，零依赖；可选 xlsx）")
     ap.add_argument("input", help="文本文件，或 structured_summary 的 JSON（配合 --from-json）；- 读 stdin")
     ap.add_argument("--from-json", action="store_true",
                     help="input 为 structured_summary.py --format json 的产物，直接读 items")
     ap.add_argument("--mode", default="auto",
                     choices=["auto", "qa", "list", "definition", "table"],
                     help="抽取类型子集（默认 auto=全部）")
-    ap.add_argument("--format", default="csv", choices=["csv", "html", "md"])
-    ap.add_argument("--out", default=None, help="输出文件路径（html/csv 建议落盘）")
+    ap.add_argument("--format", default="csv", choices=["csv", "html", "md", "xlsx"])
+    ap.add_argument("--out", default=None, help="输出文件路径（html/csv/xlsx 建议落盘）")
     args = ap.parse_args()
 
     if args.from_json:
@@ -202,7 +255,13 @@ def main():
         stats = r["stats"]
 
     grouped = normalize(items)
-    if args.format == "csv":
+    if args.format == "xlsx":
+        out_path = args.out or "structured_data.xlsx"
+        render_xlsx(grouped, out_path)
+        sys.stderr.write("已写入：%s（条目=%d）\n"
+                         % (out_path, sum(len(v) for k, v in grouped.items() if k != "_table_header")))
+        return
+    elif args.format == "csv":
         out = render_csv(grouped)
     elif args.format == "html":
         out = render_html(grouped)
