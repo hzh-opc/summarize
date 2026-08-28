@@ -140,6 +140,9 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap ocr --quiet && 
 | `entity_extract` | 摘要/原文实体·关系抽取（NER/信息抽取） | 用 **Skill 工具**加载抽取技能产出实体-关系清单（见第 4.7 节） | `local`：用关键词/正则做轻量实体候选列表（实体—类型—出现句） |
 | `ppt` | 摘要/要点生成演示文稿（pptx/幻灯片） | 用 **Skill 工具**加载演示文稿技能渲染成 PPT（见第 4.7 节） | `local`：输出结构化 PPT 大纲（每页标题+要点+备注的 markdown） |
 | `chart` | 摘要数据/对比项渲染图表（柱状/折线/饼图等） | 用 **Skill 工具**加载图表技能渲染（见第 4.7 节） | `local`：输出 markdown 数据表+趋势文字，或 mermaid xychart |
+| `qa_router` | 把摘要/要点路由到合适的问答技能做多轮追问与分派（基于原文） | 用 **Skill 工具**加载问答路由技能做问题分发/多轮问答（见第 4.7 节） | `local`：用「源文忠实」索引/回查 + `--cite` 在原文做局部问答 |
+| `podcast` | 把摘要/要点转为播客/口播音频（文本→语音），放大可听性 | 用 **Skill 工具**加载音频/播客生成技能（见第 4.7 节） | `local`：输出口播稿（纯文本/markdown 分级讲稿），可导入 TTS 工具 |
+| `spreadsheet` | 把摘要中的结构化数据/对比项生成或解析表格（电子表格/CSV/多维表） | 用 **Skill 工具**加载表格处理技能（见第 4.7 节） | `local`：输出 markdown 表格/CSV（可由 `structured_summary.py` 预抽取） |
 
 > 对接外部技能的标准动作：用 **Skill 工具**加载其 `SKILL.md` → 遵循其流程产出文本 → 把文本作为本技能 `summarize.py` 的输入。**本技能脚本只消费纯文本**，因此外部技能缺失只阻断「取文」、不阻断「摘要」。
 
@@ -211,7 +214,19 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 - **available**：用 **Skill 工具**加载图谱 / 知识图谱技能，从「摘要 + 原文」抽取实体与关系，构建节点-边可视化（知识图谱 / 关系网络）。
 - **absent（fallback=local）**：本技能直接输出 mermaid `graph TD` 代码块或 markdown 邻接表（实体 → 关系 → 实体），标注要点之间的关联，用户可一键导入 neo4j / 图数据库 / 可视化工具，**无需外部技能**。
 
-### 4.8 原生增强功能（溯源标注 / TL;DR / 差异摘要 / 批量索引）
+**H. 问答路由 qa_router（基于原文的多轮追问分派）**
+- **available**：用 **Skill 工具**加载问答路由技能，把摘要要点拆为可追问的子问题，路由到合适的问答 / RAG 技能做多轮作答。
+- **absent（fallback=local）**：本技能用「源文忠实」索引 / 定位 / 回查 + `--cite` 溯源标注，在**原文**上做局部问答——用户就摘要某要点提问时，按关键词在原文精准取片段作答并可标回具体句 / 段落，无需外部问答路由技能（与 `rag` 的本地兜底同源）。
+
+**I. 播客 / 口播音频 podcast（放大摘要可听性）**
+- **available**：用 **Skill 工具**加载音频 / 播客生成技能，把摘要 / 要点转为播客或有声稿。
+- **absent（fallback=local）**：本技能输出分级**口播稿**（markdown 讲稿：标题 + 要点 + 过渡语），用户可一键粘贴进任意 TTS / 播客工具生成音频，**无需外部技能**。
+
+**J. 表格处理 spreadsheet（放大摘要可计算性）**
+- **available**：用 **Skill 工具**加载表格处理技能，把摘要中的结构化数据 / 对比项生成 Excel / CSV / 多维表，或解析已有表格。
+- **absent（fallback=local）**：本技能先用 `structured_summary.py` 预抽取结构化条目（问答 / 列表 / 定义 / 表格行），再输出 markdown 表格 / CSV 文本，用户可粘贴进 Excel / 飞书多维表，**无需外部技能**。
+
+### 4.8 原生增强功能（溯源标注 / TL;DR / 差异摘要 / 批量索引 / 一致性自检 / PII 预检 / 层级摘要 / 结构化抽取）
 
 这些是本技能**内置**能力（由脚本直接实现，不依赖任何外部协同技能，纯本地、零依赖），用于放大摘要的「可核查性 / 快读性 / 可对比性 / 批量可用性」。用户要求时即用，默认不主动触发。
 
@@ -244,6 +259,44 @@ $PY $SKILL_DIR/scripts/batch_summary.py <目录> [--out index.md] [--length N] [
 ```
 - 复用同目录 `summarize.py` 引擎；非文本文件自动跳过，单篇失败不中断整体。
 
+**L. 一致性自检 `consistency_check.py`（守护「源文忠实」铁律，本地、零依赖）**
+- 对「原文 + 摘要」逐句比对（CJK 二元组 + 拉丁词 Jaccard 句级相似度），判定摘要每句是否能在原文中找到支撑。不可追溯句（相似度 < 阈值）标为「疑似外部引入 / 幻觉」，须人工复核。
+- 用法与输出：
+```bash
+$PY $SKILL_DIR/scripts/consistency_check.py --original 原文.txt --summary 摘要.txt \
+    [--format md|json|txt] [--out PATH] [--threshold F]
+# 输出：verdict(consistent/inconsistent) + 可追溯/不可追溯计数与清单；exit 0=一致，非0=存在不可追溯句（可接入 CI / 自动门禁）
+```
+- 这是「源文忠实」铁律（D8）的**自动化守护**：任何把摘要交给云端做抽象 / 展开前，先用它核验摘要未引入原文外内容。
+
+**M. 上云前 PII 预检 `pii_precheck.py`（隐私守门员，本地、零依赖）**
+- 送云端前在本地用正则 + 词典模式扫描文本中的疑似 PII：手机号 / 邮箱 / 身份证 / 银行卡 / 网址 / 金额 / 疑似地址 / 疑似姓名，输出命中统计、上下文片段与**脱敏预览（mask）**。**不修改、不覆盖原文件**。
+- 用法与输出：
+```bash
+$PY $SKILL_DIR/scripts/pii_precheck.py <输入.txt> [-] [--format md|json|txt] \
+    [--categories phone,email,idcard] [--out PATH]
+# 输出：命中统计 + 明细（类别/风险/行号/原文/mask 预览）；exit 0=无 PII，非0=有 PII（可接入上云前自动门禁，建议配合脱敏协同做人工复核）
+```
+- 与 `desensitization` 协同呼应：脱敏技能缺失或仅送 `brief` 时，本工具帮助用户快速发现风险点，再决定上云范围。
+
+**N. 层级摘要 `hierarchical_summary.py`（概览 → 要点 → 细节，本地、零依赖）**
+- 复用 `summarize.py` 引擎生成多层嵌套摘要：L1 一句话核心（来自 `--tldr`）→ L2 核心要点 → L3 细节支撑句（可带 `--cite` 溯源）。便于结构化阅读与一键导入脑图 / 大纲工具。
+- 用法与输出：
+```bash
+$PY $SKILL_DIR/scripts/hierarchical_summary.py <输入.txt> [-] [--l2 N] [--l3 N] \
+    [--cite] [--keywords K] [--format md|json|txt] [--out PATH]
+# 输出：L1 概览 / L2 要点 / L3 细节 三级嵌套（md 默认带标题层级，json 含 l1/l2/l3/keywords）
+```
+
+**O. 结构化抽取 `structured_summary.py`（问答/列表/定义/表格，本地、零依赖）**
+- 从文本启发式抽取结构化条目：**问答对**（问句 + 作答 / 「问：答：」成对）、**列表项**（`-`/`1.`/`（1）` 等）、**定义/要点说明**（短主语 + 冒号/破折号/「是指」）、**表格行**（markdown `|` 分隔）。与 `chart` / `entity_extract` 协同呼应。
+- 用法与输出：
+```bash
+$PY $SKILL_DIR/scripts/structured_summary.py <输入.txt> [-] \
+    [--mode auto|qa|list|definition|table] [--format md|json] [--out PATH]
+# 输出：按类型分组的结构化条目（md）或 items/stats（json）；可作为 spreadsheet / chart 协同的输入
+```
+
 ### 4.6 安装新的协同技能后：及时刷新检测（更新设置）
 
 本技能对协同能力的检测**默认每次调用都 live 重扫** `~/.workbuddy/skills` 与 `./.workbuddy/skills`，因此用户**新安装的协同技能在下一轮对话/调用即自动生效**，无需手动改配置。为便于把「能力→技能」映射固化成可读的协同设置快照，并提供显式刷新入口，可用 `--save-cache`：
@@ -264,7 +317,7 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format 
 ### 5. 扩展：接入「用户其它已安装技能」
 
 `assets/capabilities.json` 是**开放清单**，本机制天然兼容用户未来安装的任何协同技能：
-- **已落地能力**：`desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` / `knowledge_base`(要点沉淀) / `translation`(多语摘要) / `rag`(基于原文的问答式展开) / `search`(受控联网补全) / `mindmap`(要点可视化) / `diagram`(结构/流程可视化) / `graph`(关系图谱/知识图谱) / `entity_extract`(实体·关系抽取) / `ppt`(演示文稿生成) / `chart`(图表可视化)。其中 `knowledge_base`/`translation` 对接见第 4.5 节，`rag`/`search`/`mindmap`/`diagram`/`graph`/`entity_extract`/`ppt`/`chart` 对接见第 4.7 节。
+- **已落地能力**（共 19 项）：`desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` / `knowledge_base`(要点沉淀) / `translation`(多语摘要) / `rag`(基于原文的问答式展开) / `search`(受控联网补全) / `mindmap`(要点可视化) / `diagram`(结构/流程可视化) / `graph`(关系图谱/知识图谱) / `entity_extract`(实体·关系抽取) / `ppt`(演示文稿生成) / `chart`(图表可视化) / `qa_router`(问答路由) / `podcast`(播客/口播音频) / `spreadsheet`(表格处理)。其中 `knowledge_base`/`translation` 对接见第 4.5 节，`rag`/`search`/`mindmap`/`diagram`/`graph`/`entity_extract`/`ppt`/`chart`/`qa_router`/`podcast`/`spreadsheet` 对接见第 4.7 节。
 - **新增能力**：在 JSON 的 `capabilities` 下追加任意键（如未来可加 `qa_router`、`podcast`、`spreadsheet` 等），给出 `purpose`、`keywords`（候选关键词）、`fallback` 与 `fallback_note`。`skill_bridge.py` 会自动识别匹配到的技能，无需改脚本。
 - **触发新能力**：`skill_bridge.py --cap <新能力>` 检测 → 命中则按对应分支用 **Skill 工具**加载该技能并遵循其流程；未命中则按该能力的 `fallback` 降级。若属输出后协同（如沉淀/多语），仿第 4.5 节在 SKILL.md 补一段对接分支即可。
 - **关键词调优**：若某技能未被识别（描述措辞不同），只需在其 `keywords` 中补充该技能描述里的特征词即可，零代码改动。
@@ -280,4 +333,4 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format 
 
 根据日常工作需求，参考市场同类技能，可继续补充：更长上下文的滑动窗口摘要（已支持）、多文档联合摘要（已支持）、按用户画像调节摘要语气（已支持 `--tone`）、与 `rag`/`search` 类技能联动做「摘要即检索」（已支持 `rag`/`search` 协同）。
 
-**已落地的原生增强功能**（无需外部技能，见第 4.8 节）：`--cite` 原文溯源标注、`--tldr` 一句话核心结论、`diff_summary.py` 差异/变更摘要、`batch_summary.py` 批量目录摘要+索引。
+**已落地的原生增强功能**（无需外部技能，见第 4.8 节）：`--cite` 原文溯源标注、`--tldr` 一句话核心结论、`diff_summary.py` 差异/变更摘要、`batch_summary.py` 批量目录摘要+索引、`consistency_check.py` 摘要-原文一致性自检、`pii_precheck.py` 上云前 PII 预检、`hierarchical_summary.py` 层级摘要、`structured_summary.py` 结构化抽取。
