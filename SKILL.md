@@ -223,12 +223,14 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 **I. 播客 / 口播音频 podcast（放大摘要可听性）**
 - **available**：用 **Skill 工具**加载音频 / 播客生成技能，把摘要 / 要点转为播客或有声稿。
 - **absent（fallback=local）**：本技能输出分级**口播稿**（markdown 讲稿：标题 + 要点 + 过渡语），用户可一键粘贴进任意 TTS / 播客工具生成音频，**无需外部技能**。
+- **本地兜底（原生脚本 `podcast.py`，见第 4.8 节 R）**：在外部音频 / 播客技能缺失时，本技能直接把「原文 / 摘要」转为可播报讲稿——复用 `summarize.py` 抽取核心句作章节要点（不编造），组织为开场白 / 主体 / 结尾并附 `[停顿]` 标记，估算字数与口播时长，输出 markdown / 纯文本 / json，纯本地、零依赖。
 
 **J. 表格处理 spreadsheet（放大摘要可计算性）**
 - **available**：用 **Skill 工具**加载表格处理技能，把摘要中的结构化数据 / 对比项生成 Excel / CSV / 多维表，或解析已有表格。
 - **absent（fallback=local）**：本技能先用 `structured_summary.py` 预抽取结构化条目（问答 / 列表 / 定义 / 表格行），再输出 markdown 表格 / CSV 文本，用户可粘贴进 Excel / 飞书多维表，**无需外部技能**。
+- **本地兜底（原生脚本 `spreadsheet.py`，见第 4.8 节 S）**：在外部表格技能缺失时，本技能把结构化条目转为 CSV（可直接粘贴进 Excel / 飞书多维表）、自包含 HTML（每类一段 `<table>`，浏览器打开即渲染）、或 markdown 表格；也支持读 `structured_summary.py --format json` 的产物续接，**无需外部技能、零依赖**。
 
-### 4.8 原生增强功能（溯源标注 / TL;DR / 差异摘要 / 批量索引 / 一致性自检 / PII 预检 / 层级摘要 / 结构化抽取 / mindmap 反向导入 / qa_router 多轮状态机）
+### 4.8 原生增强功能（溯源标注 / TL;DR / 差异摘要 / 批量索引 / 一致性自检 / PII 预检 / 层级摘要 / 结构化抽取 / mindmap 反向导入（含 markmap 渲染）/ qa_router 多轮状态机 / podcast 口播稿 / spreadsheet 表格）
 
 这些是本技能**内置**能力（由脚本直接实现，不依赖任何外部协同技能，纯本地、零依赖），用于放大摘要的「可核查性 / 快读性 / 可对比性 / 批量可用性 / 双向可探索性 / 多轮可问答性」。用户要求时即用，默认不主动触发。
 
@@ -309,6 +311,11 @@ $PY $SKILL_DIR/scripts/mindmap_import.py <脑图.md> [-] \
 # 支持形态：# 标题层级、-/* 嵌套列表、```mermaid mindmap ... ``` 块（自动剥离 id[text] 等语法噪音）
 ```
 - 这是 `mindmap` 协同能力（摘要→脑图）的**反向闭环**：用户从脑图工具导出的大纲也能重新成为可摘要、可检索、可追问的文本。
+- **接 markmap 直接渲染**：加 `--markmap` 生成自包含 HTML（嵌入 markmap-autoloader），把节点树渲染为可交互思维导图，浏览器打开即见——实现「反向导入→直接渲染」闭环。查看时需联网加载 markmap 查看器（仅查看器来自 CDN，数据本地生成）。
+```bash
+$PY $SKILL_DIR/scripts/mindmap_import.py <脑图.md> --markmap [--title 标题] [--out 渲染.html]
+# 输出：<脑图>.mm.html（自包含，浏览器打开即渲染交互脑图）
+```
 
 **Q. 问答路由多轮状态机 `qa_router.py`（本地、源文忠实、零依赖）**
 - 在外部问答路由技能缺失时，本技能提供**本地多轮兜底**：用 JSON session 文件持久化每轮上下文，对追问自动做**指代消解**（结合上一轮 topic / 上下文），按关键词在原文（及可选摘要）精准取片段作答并附溯源标注；若问题疑似需要外部信息则标记 `needs_external` 并建议走 `search`（须三段标记）/ `rag`。每轮一次调用、复用同一 `--session` 文件即形成多轮。
@@ -318,6 +325,26 @@ $PY $SKILL_DIR/scripts/qa_router.py --session state.json --original 原文.txt \
     [--summary 摘要.txt] --question "..." [--k 3] [--format md|json|txt] [--out PATH] [--reset]
 # 输出：本轮问答（依据原文的证据句 + 溯源标注 + 建议下一步）；session 文件持续写回，下轮复用即多轮
 # 多轮示例：首轮 --question "量子计算是什么？" → 次轮 --question "它有什么风险？"（自动消解「它」=上一轮 topic）
+```
+
+**R. 播客 / 口播稿生成 `podcast.py`（本地兜底，零依赖）**
+- 在外部音频 / 播客生成技能缺失时，本技能把「原文 / 摘要」转为可播报讲稿：复用 `summarize.py` 引擎抽取核心句作为章节要点（**不编造，全部来自原文**），组织为开场白 → 主体（每章标题 + 口播稿 + `[停顿]` 标记）→ 结尾（总结 + 行动号召），并估算总字数与口播时长（中文 ~220 字/分钟、英文 ~150 wpm）。输出 markdown 分级讲稿 / 纯文本口播稿（便于直接粘贴进 TTS）/ json。
+- 用法与输出：
+```bash
+$PY $SKILL_DIR/scripts/podcast.py <输入.txt> [-] \
+    [--title 主题] [--host 节目名] [--chapters N] [--keywords K] \
+    [--format md|txt|json] [--out PATH]
+# 输出：分级口播稿（md）/ 纯文本口播稿（txt，直接喂 TTS）/ 结构化（json）；附预计时长
+```
+
+**S. 表格生成 / 解析 `spreadsheet.py`（本地兜底，零依赖）**
+- 在外部表格处理技能缺失时，本技能把「原文 / 摘要」中的结构化数据转为电子表格可消费的形态：复用 `structured_summary.py` 的启发式抽取问答对 / 列表项 / 定义说明 / 表格行，输出 CSV（可直接粘贴进 Excel / 飞书多维表 / Numbers）、自包含 HTML（每类一段 `<table>`，浏览器打开即渲染）、或 markdown 表格。也支持读 `structured_summary.py --format json` 的产物续接（`--from-json`），**无需外部技能、零依赖**（不生成 .xlsx，因需 openpyxl 非默认依赖；CSV/HTML 已覆盖绝大多数下游）。
+- 用法与输出：
+```bash
+$PY $SKILL_DIR/scripts/spreadsheet.py <输入.txt> [-] \
+    [--from-json] [--mode auto|qa|list|definition|table] \
+    [--format csv|html|md] [--out PATH]
+# 输出：CSV 文本 / 自包含 HTML 多表格（直接渲染）/ markdown 表；--from-json 时接 structured_summary 的 JSON 产物
 ```
 
 ### 4.6 安装新的协同技能后：及时刷新检测（更新设置）
@@ -356,4 +383,4 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format 
 
 根据日常工作需求，参考市场同类技能，可继续补充：更长上下文的滑动窗口摘要（已支持）、多文档联合摘要（已支持）、按用户画像调节摘要语气（已支持 `--tone`）、与 `rag`/`search` 类技能联动做「摘要即检索」（已支持 `rag`/`search` 协同）。
 
-**已落地的原生增强功能**（无需外部技能，见第 4.8 节）：`--cite` 原文溯源标注、`--tldr` 一句话核心结论、`diff_summary.py` 差异/变更摘要、`batch_summary.py` 批量目录摘要+索引、`consistency_check.py` 摘要-原文一致性自检、`pii_precheck.py` 上云前 PII 预检、`hierarchical_summary.py` 层级摘要、`structured_summary.py` 结构化抽取、`mindmap_import.py` 思维导图反向导入、`qa_router.py` 问答路由多轮状态机。
+**已落地的原生增强功能**（无需外部技能，见第 4.8 节）：`--cite` 原文溯源标注、`--tldr` 一句话核心结论、`diff_summary.py` 差异/变更摘要、`batch_summary.py` 批量目录摘要+索引、`consistency_check.py` 摘要-原文一致性自检、`pii_precheck.py` 上云前 PII 预检、`hierarchical_summary.py` 层级摘要、`structured_summary.py` 结构化抽取、`mindmap_import.py` 思维导图反向导入（含 `--markmap` 直接渲染）、`qa_router.py` 问答路由多轮状态机、`podcast.py` 口播稿生成、`spreadsheet.py` 表格生成/解析。
