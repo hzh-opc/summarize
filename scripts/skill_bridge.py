@@ -98,7 +98,7 @@ DEFAULT_CAPS = {
             "purpose": "把摘要要点可视化为思维导图/结构化脑图，放大摘要可探索性",
             "keywords": ["思维导图", "mindmap", "mind map", "脑图", "markmap", "xmind", "mermaid", "可视化脑图", "结构化导图", "导图", "思维图"],
             "fallback": "local",
-            "fallback_note": "缺失时本技能直接输出层级要点大纲（markdown 缩进或 mermaid 代码块），可一键粘贴进 markmap/XMind/语雀等脑图工具，无需外部技能",
+            "fallback_note": "缺失时本技能直接输出层级要点大纲（markdown 缩进或 mermaid 代码块），可一键粘贴进 markmap/XMind/语雀等脑图工具，无需外部技能；另含原生 mindmap_import.py 反向导入（脑图/大纲→嵌套大纲/树/json，可选还原摘要），形成双向闭环",
         },
         "diagram": {
             "purpose": "把摘要中的流程/结构/架构画成结构化图示（流程图/时序图/架构图/类图等），放大摘要的过程与结构",
@@ -134,7 +134,7 @@ DEFAULT_CAPS = {
             "purpose": "把摘要/要点路由到合适的问答技能，做基于原文的多轮追问与分派（问题→技能/答案分发）",
             "keywords": ["问答路由", "问题路由", "qa router", "qa 路由", "question routing", "多轮问答", "问答分发", "问答编排", "问题分派", "faq 路由"],
             "fallback": "local",
-            "fallback_note": "缺失时本技能用「源文忠实」索引/回查 + --cite 溯源在原文做局部问答，按关键词在原文精准取片段作答，无需外部问答路由技能",
+            "fallback_note": "缺失时本技能用「源文忠实」索引/回查 + --cite 溯源在原文做局部问答，按关键词在原文精准取片段作答，无需外部问答路由技能；另含原生 qa_router.py 多轮状态机（JSON session 持久化上下文、追问指代消解、needs_external 标记）作为本地兜底",
         },
         "podcast": {
             "purpose": "把摘要/要点转为播客或口播音频（文本→语音/音频生成），放大摘要的「可听性」",
