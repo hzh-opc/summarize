@@ -202,9 +202,10 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 - **absent（fallback=tool）**：回退内置 `WebSearch` 工具。
 - **无论 available / absent，凡联网补全必须严格按「源文忠实」专节执行三段标记**：【原文】可溯源句 / 段落 ·【联网补全】附来源链接 / 出处 + 获取时间 ·【处理结果】分别依赖了哪些原文与补全；外部内容**不得混入看似原文**。**默认不联网**，仅当原文确实不足以满足本次后续处理需求时才走此分支。
 
-**E. 要点可视化 mindmap**
+**E. 要点可视化 mindmap（含反向导入）**
 - **available**：用 **Skill 工具**加载脑图技能，把「摘要 + 层级要点」渲染为思维导图 / 结构化脑图。
 - **absent（fallback=local）**：本技能直接输出带层级的要点大纲（markdown 缩进或 mermaid 代码块），用户可一键粘贴进 markmap / XMind / 语雀等任意脑图工具，**无需外部技能**。
+- **反向导入（原生脚本 `mindmap_import.py`，见第 4.8 节 P）**：用户从脑图工具导出的大纲（markdown 标题层级 / 嵌套列表 / mermaid `mindmap` 块）可**反向导入**回本技能——解析为带层级的节点树，输出嵌套大纲 / 树状 JSON / 展平文本，并可选 `--re-summarize` 把展平文本喂回 `summarize.py` 引擎还原成摘要。这是「摘要→脑图」的**双向闭环**，让脑图也能重新成为可摘要、可检索、可追问的文本。
 
 **F. 结构/流程可视化 diagram**
 - **available**：用 **Skill 工具**加载图示技能，把摘要中的流程 / 结构 / 架构渲染为流程图 / 时序图 / 架构图 / 类图等。
@@ -214,9 +215,10 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 - **available**：用 **Skill 工具**加载图谱 / 知识图谱技能，从「摘要 + 原文」抽取实体与关系，构建节点-边可视化（知识图谱 / 关系网络）。
 - **absent（fallback=local）**：本技能直接输出 mermaid `graph TD` 代码块或 markdown 邻接表（实体 → 关系 → 实体），标注要点之间的关联，用户可一键导入 neo4j / 图数据库 / 可视化工具，**无需外部技能**。
 
-**H. 问答路由 qa_router（基于原文的多轮追问分派）**
+**H. 问答路由 qa_router（基于原文的多轮追问分派 · 多轮状态机）**
 - **available**：用 **Skill 工具**加载问答路由技能，把摘要要点拆为可追问的子问题，路由到合适的问答 / RAG 技能做多轮作答。
 - **absent（fallback=local）**：本技能用「源文忠实」索引 / 定位 / 回查 + `--cite` 溯源标注，在**原文**上做局部问答——用户就摘要某要点提问时，按关键词在原文精准取片段作答并可标回具体句 / 段落，无需外部问答路由技能（与 `rag` 的本地兜底同源）。
+- **多轮状态机（原生脚本 `qa_router.py`，见第 4.8 节 Q）**：在外部问答路由技能缺失时，本技能提供**本地多轮兜底**——用 JSON session 文件持久化每轮上下文，对追问自动做**指代消解**（结合上一轮 topic / 上下文，消解「那这个 / 它 / 为什么 / 举个例子」等代词），按关键词在原文精准取片段作答并附溯源标注；若问题疑似需要外部信息则标记 `needs_external` 并建议走 `search`（须三段标记）/ `rag`。纯本地、零依赖。
 
 **I. 播客 / 口播音频 podcast（放大摘要可听性）**
 - **available**：用 **Skill 工具**加载音频 / 播客生成技能，把摘要 / 要点转为播客或有声稿。
@@ -226,9 +228,9 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 - **available**：用 **Skill 工具**加载表格处理技能，把摘要中的结构化数据 / 对比项生成 Excel / CSV / 多维表，或解析已有表格。
 - **absent（fallback=local）**：本技能先用 `structured_summary.py` 预抽取结构化条目（问答 / 列表 / 定义 / 表格行），再输出 markdown 表格 / CSV 文本，用户可粘贴进 Excel / 飞书多维表，**无需外部技能**。
 
-### 4.8 原生增强功能（溯源标注 / TL;DR / 差异摘要 / 批量索引 / 一致性自检 / PII 预检 / 层级摘要 / 结构化抽取）
+### 4.8 原生增强功能（溯源标注 / TL;DR / 差异摘要 / 批量索引 / 一致性自检 / PII 预检 / 层级摘要 / 结构化抽取 / mindmap 反向导入 / qa_router 多轮状态机）
 
-这些是本技能**内置**能力（由脚本直接实现，不依赖任何外部协同技能，纯本地、零依赖），用于放大摘要的「可核查性 / 快读性 / 可对比性 / 批量可用性」。用户要求时即用，默认不主动触发。
+这些是本技能**内置**能力（由脚本直接实现，不依赖任何外部协同技能，纯本地、零依赖），用于放大摘要的「可核查性 / 快读性 / 可对比性 / 批量可用性 / 双向可探索性 / 多轮可问答性」。用户要求时即用，默认不主动触发。
 
 **H. 溯源标注 `--cite`（落实「源文忠实」铁律）**
 - 在 `summarize.py` 加 `--cite`：摘要每句句末自动附原文定位，格式 `（见原文第P段·句S）`（多文档时为 `（见第N篇·第P段·句S）`）。
@@ -297,6 +299,27 @@ $PY $SKILL_DIR/scripts/structured_summary.py <输入.txt> [-] \
 # 输出：按类型分组的结构化条目（md）或 items/stats（json）；可作为 spreadsheet / chart 协同的输入
 ```
 
+**P. 思维导图反向导入 `mindmap_import.py`（脑图 / 大纲 → 嵌套结构，双向闭环）**
+- 把「脑图 / 大纲」**反向导入**回摘要生态：解析 markdown 标题层级 / 嵌套列表 / mermaid `mindmap` 块，保留层级构建节点树，输出嵌套大纲（md）/ 树状结构（json）/ 展平文本（txt）。可选 `--re-summarize` 把展平文本喂回 `summarize.py` 引擎，还原成一份摘要。
+- 用法与输出：
+```bash
+$PY $SKILL_DIR/scripts/mindmap_import.py <脑图.md> [-] \
+    [--format md|json|txt] [--re-summarize] [--length N] [--keywords K] [--out PATH]
+# 输出：嵌套大纲 / 树(json) / 展平文本；--re-summarize 时追加「由脑图还原的摘要」
+# 支持形态：# 标题层级、-/* 嵌套列表、```mermaid mindmap ... ``` 块（自动剥离 id[text] 等语法噪音）
+```
+- 这是 `mindmap` 协同能力（摘要→脑图）的**反向闭环**：用户从脑图工具导出的大纲也能重新成为可摘要、可检索、可追问的文本。
+
+**Q. 问答路由多轮状态机 `qa_router.py`（本地、源文忠实、零依赖）**
+- 在外部问答路由技能缺失时，本技能提供**本地多轮兜底**：用 JSON session 文件持久化每轮上下文，对追问自动做**指代消解**（结合上一轮 topic / 上下文），按关键词在原文（及可选摘要）精准取片段作答并附溯源标注；若问题疑似需要外部信息则标记 `needs_external` 并建议走 `search`（须三段标记）/ `rag`。每轮一次调用、复用同一 `--session` 文件即形成多轮。
+- 用法与输出：
+```bash
+$PY $SKILL_DIR/scripts/qa_router.py --session state.json --original 原文.txt \
+    [--summary 摘要.txt] --question "..." [--k 3] [--format md|json|txt] [--out PATH] [--reset]
+# 输出：本轮问答（依据原文的证据句 + 溯源标注 + 建议下一步）；session 文件持续写回，下轮复用即多轮
+# 多轮示例：首轮 --question "量子计算是什么？" → 次轮 --question "它有什么风险？"（自动消解「它」=上一轮 topic）
+```
+
 ### 4.6 安装新的协同技能后：及时刷新检测（更新设置）
 
 本技能对协同能力的检测**默认每次调用都 live 重扫** `~/.workbuddy/skills` 与 `./.workbuddy/skills`，因此用户**新安装的协同技能在下一轮对话/调用即自动生效**，无需手动改配置。为便于把「能力→技能」映射固化成可读的协同设置快照，并提供显式刷新入口，可用 `--save-cache`：
@@ -333,4 +356,4 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format 
 
 根据日常工作需求，参考市场同类技能，可继续补充：更长上下文的滑动窗口摘要（已支持）、多文档联合摘要（已支持）、按用户画像调节摘要语气（已支持 `--tone`）、与 `rag`/`search` 类技能联动做「摘要即检索」（已支持 `rag`/`search` 协同）。
 
-**已落地的原生增强功能**（无需外部技能，见第 4.8 节）：`--cite` 原文溯源标注、`--tldr` 一句话核心结论、`diff_summary.py` 差异/变更摘要、`batch_summary.py` 批量目录摘要+索引、`consistency_check.py` 摘要-原文一致性自检、`pii_precheck.py` 上云前 PII 预检、`hierarchical_summary.py` 层级摘要、`structured_summary.py` 结构化抽取。
+**已落地的原生增强功能**（无需外部技能，见第 4.8 节）：`--cite` 原文溯源标注、`--tldr` 一句话核心结论、`diff_summary.py` 差异/变更摘要、`batch_summary.py` 批量目录摘要+索引、`consistency_check.py` 摘要-原文一致性自检、`pii_precheck.py` 上云前 PII 预检、`hierarchical_summary.py` 层级摘要、`structured_summary.py` 结构化抽取、`mindmap_import.py` 思维导图反向导入、`qa_router.py` 问答路由多轮状态机。
