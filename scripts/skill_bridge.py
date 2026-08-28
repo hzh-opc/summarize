@@ -98,7 +98,7 @@ DEFAULT_CAPS = {
             "purpose": "把摘要要点可视化为思维导图/结构化脑图，放大摘要可探索性",
             "keywords": ["思维导图", "mindmap", "mind map", "脑图", "markmap", "xmind", "mermaid", "可视化脑图", "结构化导图", "导图", "思维图"],
             "fallback": "local",
-            "fallback_note": "缺失时本技能直接输出层级要点大纲（markdown 缩进或 mermaid 代码块），可一键粘贴进 markmap/XMind/语雀等脑图工具，无需外部技能；另含原生 mindmap_import.py 反向导入（脑图/大纲→嵌套大纲/树/json，可选还原摘要），形成双向闭环",
+            "fallback_note": "缺失时本技能直接输出层级要点大纲（markdown 缩进或 mermaid 代码块），可一键粘贴进 markmap/XMind/语雀等脑图工具，无需外部技能；另含原生 mindmap_import.py 反向导入（脑图/大纲→嵌套大纲/树/json，可选还原摘要），并支持 --markmap 生成自包含 HTML 直接渲染交互脑图，形成双向闭环",
         },
         "diagram": {
             "purpose": "把摘要中的流程/结构/架构画成结构化图示（流程图/时序图/架构图/类图等），放大摘要的过程与结构",
@@ -140,13 +140,13 @@ DEFAULT_CAPS = {
             "purpose": "把摘要/要点转为播客或口播音频（文本→语音/音频生成），放大摘要的「可听性」",
             "keywords": ["播客生成", "podcast 生成", "音频生成", "语音合成", "tts", "口播稿", "声音生成", "播客制作", "音频内容生成", "有声摘要"],
             "fallback": "local",
-            "fallback_note": "缺失时本技能输出口播稿（纯文本/markdown 分级讲稿），用户可一键粘贴进任意 TTS / 播客工具生成音频，无需外部技能",
+            "fallback_note": "缺失时本技能输出口播稿（纯文本/markdown 分级讲稿），用户可一键粘贴进任意 TTS / 播客工具生成音频，无需外部技能；另含原生 podcast.py 口播稿生成脚本（复用 summarize 抽核心句作章节、估算口播时长，零依赖）",
         },
         "spreadsheet": {
             "purpose": "把摘要中的结构化数据/对比项生成表格或解析已有表格（电子表格/CSV/多维表），放大摘要的「可计算性」",
             "keywords": ["表格处理", "电子表格", "spreadsheet", "excel 生成", "csv 生成", "表格生成", "多维表", "表格制作", "数据表生成", "表格解析"],
             "fallback": "local",
-            "fallback_note": "缺失时本技能输出 markdown 表格 / CSV 文本（可由 structured_summary.py 预抽取结构），用户可粘贴进 Excel/飞书多维表，无需外部技能",
+            "fallback_note": "缺失时本技能输出 markdown 表格 / CSV 文本（可由 structured_summary.py 预抽取结构），用户可粘贴进 Excel/飞书多维表，无需外部技能；另含原生 spreadsheet.py 表格生成/解析脚本（输出 CSV / 自包含 HTML 多表格 / markdown 表，零依赖）",
         },
     }
 }
