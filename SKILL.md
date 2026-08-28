@@ -133,6 +133,8 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap ocr --quiet && 
 | `rag` | 基于原文的问答式展开（检索增强/局部精准问答） | 用 **Skill 工具**加载 RAG 技能，在**原文**上建索引做溯源式追问（见第 4.7 节） | `local`：本技能「源文忠实」索引回查即轻量 RAG，按关键词在原文取片段 |
 | `search` | 受控联网补全（外部补充） | 用 **Skill 工具**加载搜索技能；联网补全须按三段标记（见第 4.7 节） | `tool`：回退内置 `WebSearch`，仍须三段标记 |
 | `mindmap` | 摘要要点可视化思维导图 | 用 **Skill 工具**加载脑图技能产出导图（见第 4.7 节） | `local`：输出层级要点大纲（md/mermaid），可导入脑图工具 |
+| `diagram` | 摘要结构/流程可视化（流程图/架构图/时序图等） | 用 **Skill 工具**加载图示技能产出结构化图（见第 4.7 节） | `local`：输出 mermaid 代码块（flowchart/sequence/class）或 drawio 文本 |
+| `graph` | 摘要要点关系图谱/知识图谱（实体-关系网络） | 用 **Skill 工具**加载图谱技能抽取实体关系并可视化（见第 4.7 节） | `local`：输出 mermaid graph（graph TD）或 markdown 邻接表 |
 
 > 对接外部技能的标准动作：用 **Skill 工具**加载其 `SKILL.md` → 遵循其流程产出文本 → 把文本作为本技能 `summarize.py` 的输入。**本技能脚本只消费纯文本**，因此外部技能缺失只阻断「取文」、不阻断「摘要」。
 
@@ -196,6 +198,14 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 - **available**：用 **Skill 工具**加载脑图技能，把「摘要 + 层级要点」渲染为思维导图 / 结构化脑图。
 - **absent（fallback=local）**：本技能直接输出带层级的要点大纲（markdown 缩进或 mermaid 代码块），用户可一键粘贴进 markmap / XMind / 语雀等任意脑图工具，**无需外部技能**。
 
+**F. 结构/流程可视化 diagram**
+- **available**：用 **Skill 工具**加载图示技能，把摘要中的流程 / 结构 / 架构渲染为流程图 / 时序图 / 架构图 / 类图等。
+- **absent（fallback=local）**：本技能直接输出 mermaid 代码块（`flowchart` / `sequence` / `class`）或 drawio 文本，用户可在任何支持 mermaid 的渲染器（如 markmap / Typora / VS Code 插件）或 drawio 中预览，**无需外部技能**。
+
+**G. 关系图谱 graph（实体-关系网络）**
+- **available**：用 **Skill 工具**加载图谱 / 知识图谱技能，从「摘要 + 原文」抽取实体与关系，构建节点-边可视化（知识图谱 / 关系网络）。
+- **absent（fallback=local）**：本技能直接输出 mermaid `graph TD` 代码块或 markdown 邻接表（实体 → 关系 → 实体），标注要点之间的关联，用户可一键导入 neo4j / 图数据库 / 可视化工具，**无需外部技能**。
+
 ### 4.6 安装新的协同技能后：及时刷新检测（更新设置）
 
 本技能对协同能力的检测**默认每次调用都 live 重扫** `~/.workbuddy/skills` 与 `./.workbuddy/skills`，因此用户**新安装的协同技能在下一轮对话/调用即自动生效**，无需手动改配置。为便于把「能力→技能」映射固化成可读的协同设置快照，并提供显式刷新入口，可用 `--save-cache`：
@@ -216,8 +226,8 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format 
 ### 5. 扩展：接入「用户其它已安装技能」
 
 `assets/capabilities.json` 是**开放清单**，本机制天然兼容用户未来安装的任何协同技能：
-- **已落地能力**：`desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` / `knowledge_base`(要点沉淀) / `translation`(多语摘要) / `rag`(基于原文的问答式展开) / `search`(受控联网补全) / `mindmap`(要点可视化)。其中 `knowledge_base`/`translation` 对接见第 4.5 节，`rag`/`search`/`mindmap` 对接见第 4.7 节。
-- **新增能力**：在 JSON 的 `capabilities` 下追加任意键（如 `graph`、`diagram`、`entity_extract`），给出 `purpose`、`keywords`（候选关键词）、`fallback` 与 `fallback_note`。`skill_bridge.py` 会自动识别匹配到的技能，无需改脚本。
+- **已落地能力**：`desensitization` / `ocr` / `speech_transcription` / `video_transcript` / `document_text` / `web_fetch` / `knowledge_base`(要点沉淀) / `translation`(多语摘要) / `rag`(基于原文的问答式展开) / `search`(受控联网补全) / `mindmap`(要点可视化) / `diagram`(结构/流程可视化) / `graph`(关系图谱/知识图谱)。其中 `knowledge_base`/`translation` 对接见第 4.5 节，`rag`/`search`/`mindmap`/`diagram`/`graph` 对接见第 4.7 节。
+- **新增能力**：在 JSON 的 `capabilities` 下追加任意键（如 `entity_extract`、`ppt`、`chart`），给出 `purpose`、`keywords`（候选关键词）、`fallback` 与 `fallback_note`。`skill_bridge.py` 会自动识别匹配到的技能，无需改脚本。
 - **触发新能力**：`skill_bridge.py --cap <新能力>` 检测 → 命中则按对应分支用 **Skill 工具**加载该技能并遵循其流程；未命中则按该能力的 `fallback` 降级。若属输出后协同（如沉淀/多语），仿第 4.5 节在 SKILL.md 补一段对接分支即可。
 - **关键词调优**：若某技能未被识别（描述措辞不同），只需在其 `keywords` 中补充该技能描述里的特征词即可，零代码改动。
 - **刷新设置**：安装/卸载协同技能后运行 `skill_bridge.py --save-cache`（见第 4.6 节），把「能力→技能」映射固化为 `capabilities.detected.json` 快照；本技能默认每次 live 重扫，新技能即时生效。

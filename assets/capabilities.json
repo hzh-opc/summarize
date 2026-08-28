@@ -31,10 +31,10 @@
       "fallback_note": "缺失时请用户导出为 .txt/.md 或安装文档处理技能"
     },
     "web_fetch": {
-      "purpose": "网页抓取为文本",
-      "keywords": ["网页抓取", "web fetch", "fetch url", "url抓取", "爬虫", "crawler", "联网抓取", "联网搜索"],
+      "purpose": "按给定 URL 抓取网页内容为文本（非联网搜索；联网检索见 search 能力）",
+      "keywords": ["网页抓取", "web fetch", "fetch url", "url抓取", "爬虫", "crawler", "抓取网页", "fetch webpage", "网页内容获取", "scrape url"],
       "fallback": "tool",
-      "fallback_note": "缺失时回退到内置 WebFetch 工具直接抓取（抓取内容可能含敏感信息，仍需过脱敏协同）"
+      "fallback_note": "缺失时回退到内置 WebFetch 工具按 URL 抓取（抓取内容可能含敏感信息，仍需过脱敏协同）；注意与 search 区分：本能力取「指定 URL 的文本」，search 取「联网检索结果」"
     },
     "knowledge_base": {
       "purpose": "摘要/要点沉淀进知识库、笔记或长期记忆",
@@ -65,6 +65,18 @@
       "keywords": ["思维导图", "mindmap", "mind map", "脑图", "markmap", "xmind", "mermaid", "可视化脑图", "结构化导图", "导图", "思维图"],
       "fallback": "local",
       "fallback_note": "缺失时本技能直接输出层级要点大纲（markdown 缩进或 mermaid 代码块），可一键粘贴进 markmap/XMind/语雀等脑图工具，无需外部技能"
+    },
+    "diagram": {
+      "purpose": "把摘要中的流程/结构/架构画成结构化图示（流程图/时序图/架构图/类图等），放大摘要的过程与结构",
+      "keywords": ["流程图", "架构图", "时序图", "类图", "用例图", "diagram", "flowchart", "mermaid图", "plantuml", "drawio", "图示", "示意图", "结构图", "uml"],
+      "fallback": "local",
+      "fallback_note": "缺失时本技能输出 mermaid 代码块（flowchart/sequence/class）或 drawio 文本，可直接在支持 mermaid 的渲染器/编辑器预览，无需外部技能"
+    },
+    "graph": {
+      "purpose": "从摘要要点抽取实体与关系，构建知识图谱/关系网络（节点-边可视化），放大要点的关联性",
+      "keywords": ["知识图谱", "关系图谱", "实体关系", "图谱", "knowledge graph", "关系网络", "network graph", "实体网络", "图数据库", "关系图", "nebula", "neo4j"],
+      "fallback": "local",
+      "fallback_note": "缺失时本技能输出 mermaid graph（graph TD）代码块或 markdown 邻接表，标注实体与关系，可一键导入 neo4j/图数据库/可视化工具"
     }
   }
 }
