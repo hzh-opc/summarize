@@ -26,7 +26,7 @@
     },
     "document_text": {
       "purpose": "docx / pdf / office / ppt 文档落地为文本",
-      "keywords": ["docx", "word", "文档", "office", "pdf", "排版", "幻灯片", "ppt", "wps"],
+      "keywords": ["docx 转文本", "docx 解析", "docx 提取", "pdf 提取文字", "pdf 转文本", "document to text", "pdf to text", "office 解析", "文档解析", "文档转文本", "word 解析", "ppt 转文字"],
       "fallback": "ask",
       "fallback_note": "缺失时请用户导出为 .txt/.md 或安装文档处理技能"
     },
