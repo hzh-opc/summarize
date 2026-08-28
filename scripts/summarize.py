@@ -17,11 +17,14 @@ summarize.py — 本地抽取式摘要与关键词提取引擎（纯标准库，
 用法：
   python3 summarize.py INPUT [INPUT2 ...] [--length N | --ratio R | --chars C]
                            [--keywords K] [--lang auto|zh|en] [--tone neutral|concise|professional|casual]
-                           [--max-input-chars N] [--format json|md|txt] [--eval] [--brief] [--out PATH]
+                           [--max-input-chars N] [--format json|md|txt] [--eval] [--brief]
+                           [--cite] [--tldr] [--out PATH]
 
   INPUT 可为：文本文件路径；或 `-` 表示从 stdin 读取（多文档时每个位置独立）。
   --brief   输出「喂给云端模型的紧凑中间产物」（关键词 + 候选句 + 结构骨架）。
   --eval    在输出中附带质量评估。
+  --cite    摘要句末附原文溯源标注（见原文第P段·句S），落实「源文忠实」铁律。
+  --tldr    仅输出一句话核心结论（取打分最高句截断为单行）。
 
 本脚本**不依赖任何外部技能**（如 desensitization-sop）；脱敏协同由 SKILL.md 在智能体层
 面按「是否安装」条件执行，脚本本身零耦合、缺失不致错。
@@ -115,6 +118,17 @@ def split_sentences(text):
             continue
         s = re.sub(r"\s+", " ", s)
         out.append(s)
+    return out
+
+
+def split_paragraphs(text):
+    """按空行切分段落，返回非空段落列表（用于摘要溯源标注）。"""
+    paras = re.split(r"\n\s*\n|\r\n\s*\r\n", text)
+    out = []
+    for p in paras:
+        p = p.strip()
+        if p:
+            out.append(p)
     return out
 
 
@@ -390,7 +404,7 @@ def quality_eval(original, summary, keywords, chosen_idx, n_total):
 # ---------------------------------------------------------------------------
 def summarize(texts, length=None, ratio=None, chars=None, keywords_k=8,
               lang="auto", do_eval=True, brief=False,
-              max_input_chars=200000, tone="neutral", multi=False):
+              max_input_chars=200000, tone="neutral", multi=False, cite=False):
     if isinstance(texts, str):
         texts = [texts]
     texts = [t for t in texts if t and t.strip()]
@@ -398,19 +412,24 @@ def summarize(texts, length=None, ratio=None, chars=None, keywords_k=8,
         return {"summary": "", "keywords": [], "eval": None, "brief": None,
                 "lang": lang, "sentence_count": 0, "doc_count": 0}
 
-    # 构建全局句序列（含文档归属）与合并全文（供关键词提取）
-    all_sent = []          # [(doc_id, 句文本)]
-    doc_of = {}            # 全局句索引 -> doc_id
+    # 构建全局句序列（含文档归属、段落归属）与合并全文（供关键词提取）
+    all_sent = []               # [(doc_id, para_idx, 句文本)]
+    doc_of = {}                 # 全局句索引 -> doc_id
+    para_of = {}                # 全局句索引 -> para_idx（0 基）
+    para_sent_local = {}        # (doc_id, para_idx) -> [全局句索引, ...]（句内顺序）
     full_parts = []
     gidx = 0
     for d, t in enumerate(texts):
-        for s in split_sentences(t):
-            all_sent.append((d, s))
-            doc_of[gidx] = d
-            gidx += 1
+        for p, para in enumerate(split_paragraphs(t)):
+            for s in split_sentences(para):
+                all_sent.append((d, p, s))
+                doc_of[gidx] = d
+                para_of[gidx] = p
+                para_sent_local.setdefault((d, p), []).append(gidx)
+                gidx += 1
         full_parts.append(t)
     full_text = "\n".join(full_parts)
-    sentences_only = [s for _, s in all_sent]
+    sentences_only = [s for _, _, s in all_sent]
 
     if not sentences_only:
         return {"summary": "", "keywords": [], "eval": None, "brief": None,
@@ -429,14 +448,23 @@ def summarize(texts, length=None, ratio=None, chars=None, keywords_k=8,
         scored = score_sentences(sentences_only, keywords, lang)
         chosen = select_sentences(scored, len(sentences_only), length, ratio, chars)
 
-    # 组装摘要（多文档时标注来源）
+    # 组装摘要（多文档时标注来源；--cite 时附原文溯源标注）
     parts = []
     for g, s, _ in chosen:
         if lang == "zh":
             seg = s
             if not seg.endswith(("。", "！", "？", "!", "?", "；", ";")):
                 seg += "。"
-            if multi:
+            if cite:
+                d = doc_of[g]
+                p0 = para_of[g]           # 0 基，用于字典查
+                p = p0 + 1                # 1 基，用于展示
+                sp = para_sent_local[(d, p0)].index(g) + 1
+                if multi:
+                    seg += "（见第%d篇·第%d段·句%d）" % (d + 1, p, sp)
+                else:
+                    seg += "（见原文第%d段·句%d）" % (p, sp)
+            elif multi:
                 seg = "[文档%d] %s" % (doc_of[g] + 1, seg)
             parts.append(seg)
         else:
@@ -446,7 +474,18 @@ def summarize(texts, length=None, ratio=None, chars=None, keywords_k=8,
     else:
         summary = " ".join(parts)
 
-    chosen_out = [{"index": g, "doc": doc_of[g] + 1, "text": s} for g, s, _ in chosen]
+    chosen_out = [{"index": g, "doc": doc_of[g] + 1,
+                   "para": para_of[g] + 1, "text": s} for g, s, _ in chosen]
+
+    # TL;DR：取打分最高的候选句截断为单行核心结论（本地、零依赖）
+    if chosen:
+        top_g, top_s, _ = max(chosen, key=lambda x: x[2])
+        tldr_text = top_s
+        cap = 80 if lang == "zh" else 140
+        if len(tldr_text) > cap:
+            tldr_text = tldr_text[:cap].rstrip("，。、；,.; ") + "…"
+    else:
+        tldr_text = ""
 
     result = {
         "lang": lang,
@@ -457,6 +496,7 @@ def summarize(texts, length=None, ratio=None, chars=None, keywords_k=8,
         "keyword_weights": {k: round(w, 2) for k, w in keywords},
         "chosen_sentences": chosen_out,
         "jieba_used": _JIEBA,
+        "tldr": tldr_text,
     }
 
     if do_eval:
@@ -501,6 +541,10 @@ def main():
     ap.add_argument("--format", default="json", choices=["json", "md", "txt"])
     ap.add_argument("--eval", action="store_true", help="附带质量评估")
     ap.add_argument("--brief", action="store_true", help="输出喂给云端模型的紧凑中间产物")
+    ap.add_argument("--cite", action="store_true",
+                    help="摘要句末附原文溯源标注（见原文第P段·句S）")
+    ap.add_argument("--tldr", action="store_true",
+                    help="仅输出一句话 TL;DR 核心结论")
     ap.add_argument("--out", default=None, help="输出文件路径")
     args = ap.parse_args()
 
@@ -513,9 +557,16 @@ def main():
     res = summarize(texts, length=args.length, ratio=args.ratio, chars=args.chars,
                     keywords_k=args.keywords, lang=args.lang, tone=args.tone,
                     max_input_chars=args.max_input_chars,
-                    do_eval=args.eval or True, brief=args.brief, multi=multi)
+                    do_eval=args.eval or True, brief=args.brief,
+                    multi=multi, cite=args.cite)
 
-    if args.format == "json":
+    if args.tldr:
+        tldr = res.get("tldr", "")
+        if args.format == "json":
+            out = json.dumps({"tldr": tldr}, ensure_ascii=False, indent=2)
+        else:
+            out = tldr
+    elif args.format == "json":
         out = json.dumps(res, ensure_ascii=False, indent=2)
     elif args.format == "md":
         lines = ["## 摘要", res["summary"], "",

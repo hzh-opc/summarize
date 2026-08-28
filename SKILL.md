@@ -56,7 +56,7 @@ PY=<受管 python3 绝对路径，或用系统 python3>
 $PY <技能目录>/scripts/summarize.py <输入1> [<输入2> ...] \
     [--length N | --ratio R | --chars C] [--keywords K] \
     [--lang auto|zh|en] [--tone neutral|concise|professional|casual] \
-    [--max-input-chars N] [--format json|md|txt] [--eval] [--brief] [--out PATH]
+    [--max-input-chars N] [--format json|md|txt] [--eval] [--brief] [--cite] [--tldr] [--out PATH]
 ```
 - `<输入>`：一个或多个文本文件路径；或 `-` 表示读 stdin（多文档时每个位置独立）。多文档将跨文档统一提取关键词与候选句，产出联合摘要并标注 `[文档N]` 来源。
 - 长度三选一：`--length`(句数) / `--ratio`(比例) / `--chars`(字数)。
@@ -64,6 +64,8 @@ $PY <技能目录>/scripts/summarize.py <输入1> [<输入2> ...] \
 - `--max-input-chars N`：超长文本阈值（默认 200000）。输入超过该长度时**自动滑动窗口分块抽取后合并**，全程离线。
 - `--eval`：输出质量评估（压缩比、关键词覆盖、综合评分 0~100，方法见 `references/quality-eval.md`）。
 - `--brief`：**关键**。输出「关键词 + 候选句(含分值) + 结构骨架」的紧凑中间产物，仅此中间产物送云端——实现「云端取方法、本地处理信息」。
+- `--cite`：摘要每句句末附**原文溯源标注**（`见原文第P段·句S`），落实「源文忠实」铁律，让每条摘要都能标回具体原文位置（见第 4.8 节 H）。
+- `--tldr`：仅输出**一句话核心结论**（取打分最高句截断为单行），适合快读/标题场景（见第 4.8 节 I）。
 
 ### 2. 模式分支（由 `mode` 决定）
 - **local**（默认）：第 1 步结果即最终摘要，直接呈现用户。原始文本全程不出本机。
@@ -209,6 +211,39 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --cap desensitization
 - **available**：用 **Skill 工具**加载图谱 / 知识图谱技能，从「摘要 + 原文」抽取实体与关系，构建节点-边可视化（知识图谱 / 关系网络）。
 - **absent（fallback=local）**：本技能直接输出 mermaid `graph TD` 代码块或 markdown 邻接表（实体 → 关系 → 实体），标注要点之间的关联，用户可一键导入 neo4j / 图数据库 / 可视化工具，**无需外部技能**。
 
+### 4.8 原生增强功能（溯源标注 / TL;DR / 差异摘要 / 批量索引）
+
+这些是本技能**内置**能力（由脚本直接实现，不依赖任何外部协同技能，纯本地、零依赖），用于放大摘要的「可核查性 / 快读性 / 可对比性 / 批量可用性」。用户要求时即用，默认不主动触发。
+
+**H. 溯源标注 `--cite`（落实「源文忠实」铁律）**
+- 在 `summarize.py` 加 `--cite`：摘要每句句末自动附原文定位，格式 `（见原文第P段·句S）`（多文档时为 `（见第N篇·第P段·句S）`）。
+- 定位来自抽取阶段记录的「全局句索引 → 段落号 / 句内序号」映射，纯本地即可溯源，**让每条摘要都能标回具体原文位置**，与第「源文忠实」专节一致。
+```bash
+$PY $SKILL_DIR/scripts/summarize.py <输入> --cite --format txt [--length N]
+```
+
+**I. 一句话 TL;DR `--tldr`**
+- 在 `summarize.py` 加 `--tldr`：仅输出一句话核心结论（取打分最高的候选句截断为单行，≤80 中文字 / ≤140 英文字），适合快读 / 标题场景。
+```bash
+$PY $SKILL_DIR/scripts/summarize.py <输入> --tldr --format txt
+```
+
+**J. 差异 / 变更摘要 `diff_summary.py`（本地、零依赖）**
+- 对「旧版 A」与「新版 B」做句级相似度比对（CJK 二元组 + 拉丁词 Jaccard），识别新增 / 删除 / 修改，输出变更日志 changelog。
+- 用法与输出：
+```bash
+$PY $SKILL_DIR/scripts/diff_summary.py A.txt B.txt [--format md|json|txt] [--out PATH] [--threshold F]
+# 输出：相对旧版：新增 N 句、删除 M 句、修改 K 处；并分「➕新增 / ➖删除 / ✏️修改」列出
+```
+- 阈值：`--threshold`（默认 0.3）界定新增 / 删除；`[threshold, 0.85)` 区间判为「修改」（旧→新配对）。
+
+**K. 批量目录摘要 + 索引 `batch_summary.py`（本地、零依赖）**
+- 对目录下每个 `.txt/.md` 文件逐一摘要，汇总为带关键词的索引 markdown（与「多文档联合摘要」互补：联合是「合并为一份」，批量是「分别摘要 + 索引」）。
+```bash
+$PY $SKILL_DIR/scripts/batch_summary.py <目录> [--out index.md] [--length N] [--format md|json]
+```
+- 复用同目录 `summarize.py` 引擎；非文本文件自动跳过，单篇失败不中断整体。
+
 ### 4.6 安装新的协同技能后：及时刷新检测（更新设置）
 
 本技能对协同能力的检测**默认每次调用都 live 重扫** `~/.workbuddy/skills` 与 `./.workbuddy/skills`，因此用户**新安装的协同技能在下一轮对话/调用即自动生效**，无需手动改配置。为便于把「能力→技能」映射固化成可读的协同设置快照，并提供显式刷新入口，可用 `--save-cache`：
@@ -243,4 +278,6 @@ $PY $SKILL_DIR/scripts/skill_bridge.py --exclude summarize --use-cache --format 
 
 ## 可扩展方向（按需补充）
 
-根据日常工作需求，参考市场同类技能，可继续补充：更长上下文的滑动窗口摘要（已支持）、多文档联合摘要（已支持）、按用户画像调节摘要语气、与 `rag`/`search` 类技能联动做「摘要即检索」等。
+根据日常工作需求，参考市场同类技能，可继续补充：更长上下文的滑动窗口摘要（已支持）、多文档联合摘要（已支持）、按用户画像调节摘要语气（已支持 `--tone`）、与 `rag`/`search` 类技能联动做「摘要即检索」（已支持 `rag`/`search` 协同）。
+
+**已落地的原生增强功能**（无需外部技能，见第 4.8 节）：`--cite` 原文溯源标注、`--tldr` 一句话核心结论、`diff_summary.py` 差异/变更摘要、`batch_summary.py` 批量目录摘要+索引。
