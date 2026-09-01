@@ -3,6 +3,7 @@ name: summarize
 description: "为长文本、文档、网页、OCR 识别稿、音频转录稿、视频文案提取稿等自动生成摘要、提取要点与关键词，支持自定义摘要长度。优先本地离线处理（零依赖、跨平台），并支持「云端取方法、本地处理信息」以省 TOKEN、护隐私；可与 desensitization-sop 协同完成脱敏/处理/回填/复核闭环。当用户要求「总结/摘要/概括/提炼要点/提取关键词/归纳」任意形态的长内容时，应使用本技能。"
 version: "1.0.0"
 agent_created: true
+dependencies: ["jieba"]
 ---
 
 # 智能摘要技能（summarize）
@@ -51,6 +52,8 @@ agent_created: true
 
 ### 1. 本地优先：抽取式摘要 + 关键词（离线、零依赖）
 运行本技能脚本（纯标准库，Windows/macOS/Linux 通用；**未安装 jieba 时自动回退内置分词，不报错**）：
+
+> **依赖与安装（可选增强，现已支持「安装即默认启用」）**：本技能默认零第三方依赖；中文分词默认用内置二元/三元组，**安装 `jieba` 后自动启用、质量更高**。仓库已含 `requirements.txt` 与 `install.sh`——**安装技能后运行 `./install.sh` 即默认启用 jieba**（可选 `PYTHON=/path/to/python ./install.sh` 指定解释器，须与运行 `summarize.py` 的 python 一致）。未安装则自动回退内置分词，不报错。
 ```bash
 PY=<受管 python3 绝对路径，或用系统 python3>
 $PY <技能目录>/scripts/summarize.py <输入1> [<输入2> ...] \
@@ -397,8 +400,8 @@ $PY $SKILL_DIR/scripts/spreadsheet.py <输入.txt> [-] \
 
 ## 跨智能体 / 跨平台说明
 
-- 本技能为纯文本驱动的本地脚本 + 指令，不依赖特定宿主。供 Claude / Codex / OpenClaw 等使用时，复制技能目录（含 `scripts/`、`references/`、`assets/`）即可，运行 `scripts/summarize.py` 需 Python 3.8+。
-- 零第三方依赖，Windows/macOS/Linux 均直接 `python3 summarize.py` 运行。
+- 本技能为纯文本驱动的本地脚本 + 指令，不依赖特定宿主。供 Claude / Codex / OpenClaw 等使用时，复制技能目录（含 `scripts/`、`references/`、`assets/`、`requirements.txt`、`install.sh`）即可，运行 `scripts/summarize.py` 需 Python 3.8+。
+- **默认零第三方依赖**；可选 `jieba` 中文分词增强通过 `./install.sh`（读 `requirements.txt`）安装，未安装自动回退内置分词。Windows/macOS/Linux 均直接 `python3 summarize.py` 运行。
 
 ## 可扩展方向（按需补充）
 
